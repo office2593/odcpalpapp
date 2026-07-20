@@ -6,6 +6,8 @@ import re
 import secrets
 import shutil
 import smtplib
+import socket
+import time
 import uuid
 from datetime import datetime, timedelta
 from email.mime.image import MIMEImage
@@ -260,7 +262,7 @@ def send_invite_email(to_email, code, base_url):
         msg.attach(banner_img)
 
     try:
-        with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
+        with smtplib.SMTP(config["smtp_host"], config["smtp_port"], timeout=10) as server:
             server.starttls()
             server.login(config["smtp_user"], config["smtp_password"])
             server.send_message(msg)
@@ -301,6 +303,27 @@ def get_base_url():
         return request.host_url.rstrip("/")
     proto = request.args.get("_lpapp_proto", "https")
     return f"{proto}://{host}"
+
+
+@app.route("/lpapp/_debug/smtp-connect")
+def _debug_smtp_connect():
+    # TEMPORARY diagnostic, admin-only: checks whether outbound SMTP ports are
+    # reachable at all from this host, to tell a network-level block apart
+    # from a slow/rejecting Gmail response. Remove once the email issue is resolved.
+    uid = session.get("uid")
+    if not uid or not is_admin(uid):
+        abort(404)
+
+    results = {}
+    for label, host, port in [("gmail_587", "smtp.gmail.com", 587), ("gmail_465", "smtp.gmail.com", 465)]:
+        start = time.time()
+        try:
+            with socket.create_connection((host, port), timeout=6) as sock:
+                banner = sock.recv(200).decode(errors="replace")
+            results[label] = {"ok": True, "seconds": round(time.time() - start, 2), "banner": banner.strip()}
+        except Exception as e:
+            results[label] = {"ok": False, "seconds": round(time.time() - start, 2), "error": str(e)}
+    return jsonify(results)
 
 
 @app.route("/lpapp/_test_login/<uid>")
