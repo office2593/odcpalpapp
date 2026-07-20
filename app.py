@@ -90,7 +90,10 @@ def _load_service_account():
 if not firebase_admin._apps:
     firebase_admin.initialize_app(_load_service_account())
 
-app = Flask(__name__)
+# Everything the app serves is proxied through WordPress only under /lpapp/*,
+# so static assets must live under that prefix too — otherwise CSS/JS/images
+# resolve to plain "/static/..." which the WordPress proxy never sees.
+app = Flask(__name__, static_url_path="/lpapp/static")
 
 if os.environ.get("SECRET_KEY"):
     app.secret_key = os.environ["SECRET_KEY"]
@@ -277,12 +280,22 @@ def current_site_or_401():
     return slug, sites
 
 
+def get_base_url():
+    """Behind the WordPress proxy, request.host_url is Railway's own hostname —
+    use the X-Forwarded-Host/-Proto the plugin sets so links point at odcpa.co.il."""
+    host = request.headers.get("X-Forwarded-Host")
+    if not host:
+        return request.host_url.rstrip("/")
+    proto = request.headers.get("X-Forwarded-Proto", "https")
+    return f"{proto}://{host}"
+
+
 @app.route("/")
 def index():
     return f'<a href="/lpapp/{DEMO_SLUG}">public demo page</a> · <a href="/lpapp/login">login</a> · <a href="/lpapp/admin">admin panel</a>'
 
 
-@app.route("/static/uploads/<slug>/<filename>")
+@app.route("/lpapp/uploads/<slug>/<filename>")
 def uploaded_file(slug, filename):
     # Served from UPLOAD_DIR explicitly (not Flask's default /static handler) since
     # UPLOAD_DIR may point outside the static/ folder — at the mounted Volume path.
@@ -400,7 +413,7 @@ def admin():
         "admin.html",
         site=site,
         gradients=GRADIENTS,
-        public_url=request.host_url.rstrip("/") + f"/lpapp/{site['slug']}",
+        public_url=get_base_url() + f"/lpapp/{site['slug']}",
         show_invitations_link=is_admin(uid),
     )
 
@@ -453,7 +466,7 @@ def admin_upload():
     os.makedirs(site_upload_dir, exist_ok=True)
     file.save(os.path.join(site_upload_dir, filename))
 
-    url = f"/static/uploads/{slug}/{filename}"
+    url = f"/lpapp/uploads/{slug}/{filename}"
 
     site = sites[slug]
     if field == "photo":
@@ -481,9 +494,11 @@ def admin_remove_image():
 
     save_sites(sites)
 
-    file_path = os.path.join(BASE_DIR, url.lstrip("/").replace("/", os.sep))
-    if os.path.isfile(file_path):
-        os.remove(file_path)
+    relative = url[len("/lpapp/uploads/"):] if url.startswith("/lpapp/uploads/") else None
+    if relative:
+        file_path = os.path.join(UPLOAD_DIR, relative.replace("/", os.sep))
+        if os.path.isfile(file_path):
+            os.remove(file_path)
 
     return jsonify({"ok": True, "site": site})
 
@@ -521,7 +536,7 @@ def admin_create_invite():
     invites[code] = invite
     save_invites(invites)
 
-    email_sent = send_invite_email(email, code, request.host_url.rstrip("/"))
+    email_sent = send_invite_email(email, code, get_base_url())
     return jsonify({"ok": True, "code": code, "invite": invite, "email_sent": email_sent})
 
 
