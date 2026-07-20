@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>כניסה למערכת</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<style>
+  .login-wrap { max-width: 420px; margin: 60px auto; padding: 0 20px; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .otp-row { display: flex; gap: 8px; direction: ltr; }
+  .otp-row input {
+    width: 44px; height: 52px; text-align: center; font-size: 20px; padding: 0;
+  }
+  .field-error { color: var(--warning-text); font-size: 13px; margin: 8px 0 0; display: none; }
+  .brand-banner { display: block; width: 100%; max-width: 700px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<img class="brand-banner" src="{{ url_for('static', filename='img/banner.png') }}" alt="אורן דולב - רואה חשבון">
+
+<div class="login-wrap">
+
+  <section class="card step active" data-step="google">
+    <h2>כניסה למערכת</h2>
+    <p class="hint" style="margin-bottom:18px;">התחברות עם חשבון Google שלך.</p>
+    <button class="btn btn-primary" id="google-btn" type="button" style="width:100%;">המשך עם Google</button>
+    <p class="field-error" id="google-error"></p>
+  </section>
+
+  <section class="card step" data-step="code">
+    <h2>קוד הזמנה</h2>
+    <p class="hint" style="margin-bottom:18px;">הזן/י את הקוד שקיבלת במייל ההזמנה.</p>
+    <label for="code-input">קוד הזמנה</label>
+    <input id="code-input" type="text" placeholder="XXXX-XXXX" style="text-transform:uppercase;">
+    <button class="btn btn-primary" id="code-btn" type="button" style="width:100%; margin-top:16px;">המשך</button>
+    <p class="field-error" id="code-error"></p>
+  </section>
+
+  <section class="card step" data-step="phone">
+    <h2>אימות טלפון</h2>
+    <div id="phone-entry">
+      <p class="hint" style="margin-bottom:18px;">נשלח קוד אימות בהודעת SMS.</p>
+      <label for="phone-input">מספר טלפון (למשל 0501234567)</label>
+      <input id="phone-input" type="tel" placeholder="0501234567" style="direction:ltr; text-align:right;">
+      <button class="btn btn-primary" id="send-otp-btn" type="button" style="width:100%; margin-top:16px;">שליחת קוד</button>
+    </div>
+    <div id="otp-entry" style="display:none;">
+      <p class="hint" style="margin-bottom:18px;">הזן/י את הקוד בן 6 הספרות שנשלח אליך.</p>
+      <div class="otp-row">
+        <input maxlength="1" inputmode="numeric">
+        <input maxlength="1" inputmode="numeric">
+        <input maxlength="1" inputmode="numeric">
+        <input maxlength="1" inputmode="numeric">
+        <input maxlength="1" inputmode="numeric">
+        <input maxlength="1" inputmode="numeric">
+      </div>
+      <button class="btn btn-primary" id="confirm-otp-btn" type="button" style="width:100%; margin-top:16px;">אישור</button>
+    </div>
+    <p class="field-error" id="phone-error"></p>
+    <div id="recaptcha-container"></div>
+  </section>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+<script src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>

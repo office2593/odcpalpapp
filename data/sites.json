@@ -1,0 +1,35 @@
+{
+  "orit-cohen": {
+    "slug": "orit-cohen",
+    "name": "אורית כהן",
+    "role": "מנחת קבוצות ומאמנת אישית",
+    "tagline": "ליווי אישי לצמיחה, שינוי והעצמה",
+    "about": "אני מלווה קבוצות ויחידים בתהליכי צמיחה אישית מזה למעלה מ-15 שנה, בשילוב גישות דינמיות שמותאמות לכל משתתף.",
+    "photo": null,
+    "gallery": [],
+    "contact": {
+      "email": "orit@example.co.il",
+      "phone": "0501234567",
+      "whatsapp": "972501234567"
+    },
+    "theme": "midnight",
+    "photo_layout": "split"
+  },
+  "office": {
+    "slug": "office",
+    "owner_uid": "B7uAPPhQUmZezki8IwKn1qXUkph1",
+    "name": "אורן דולב",
+    "role": "",
+    "tagline": "",
+    "about": "",
+    "photo": "https://lh3.googleusercontent.com/a-/ALV-UjWvgUPfRZ6inQqsaZemDCHdI-QmtlUcoaKGU4_R2SvUfyIogEKcDHox7pSZdmRce54RsaREXH_5z9BB2QazkCUZRcIxtYV-Wcp7JOy-Qoziw6Ov_en1iz8fz-W0ArSWTBC0D8rVBtBXFOIE0DCVZzVAmzSh5J3dYcqI40hNslHwolxQLraD3m4I70L08ctx5VLnDHJ2bUYmr2mq1S_RwxAu6ErLV259qhRwL1bk65cNQWIwtedo98RKPqiMugVZP4J_WtDu3MKVnSuwx-sbx6s9ih4VGTulgE-po0nG_1Tdp1UbqfrI37Z-e1Ss-gGRim-1luAJuy894NOT7VGC0K3RMiu7TiVqVDrNA-28-4HhjVeIlTWpfnYenJLzjMIOwa5ydMF79_yjP3i6-hp2oPn0k2LBbZGu_pSfWAYdIa0VYmWG4XtxWLBhEiyWoo42PNUleSbdveZ2WOJZTppdHBZlbKBXNco1UMmpvndObfYWqcQM6fWO4XkWR6gD-yI_hPoVAwWRfSjLPlBf9VSTXYzgx7AIa1-DO3xfNFu4MsI3yDsiE4G0KV__O6AqVoCs3D_28NIEMjY9wXfRROAye5n0XjavF7tPayiMiAXJo7thaWgRMduFS1NHUtnYXyJ7Jeq4ALRAEHaKeTuO1u_klJ4ZsjBe0P8rQVXk4SYnEYL5lYASTmiGTRVLst088C2pwN3eiMX9F9zHqbjmSm97EHl7xJ5m8YwnoSSCRh8FV73JNodzec8P3ZByUPlsrvkFjkk0MiKOVxWXOgd-L5C6ExN_awbjz9zFSPw9cCvNI3LmHwYQXgUEDuGzR53TV7Sm9ClunVnMEK7EWp2PM868k7mqoNWKOVnXYrhB9_MgdFox6payI-NJiIfbaPr0kLln28ketxBCkv4np4Y70OjqOFASJ4pp4hI8FJJd8Kjwhd62dekb4y80rWCgQMkQVvMm1sjAJGaMJpSuqOSeUZIwmHuH1XXhJYsWgTV2X8EN2gfRd1HKi6N11ZJtYWjK06j7PZJgPTcaCJmHG9dZS7ie01fGkVOjT9BhkkWmjBBBcaegJqon1ML_V3E=s96-c",
+    "gallery": [],
+    "contact": {
+      "email": "office@odcpa.co.il",
+      "phone": "+972501234567",
+      "whatsapp": "972501234567"
+    },
+    "theme": "midnight",
+    "photo_layout": "split"
+  }
+}

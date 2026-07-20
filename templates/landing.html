@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ site.name }} | {{ site.role }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+</head>
+<body style="--gradient-1:{{ gradient.colors[0] }}; --gradient-2:{{ gradient.colors[1] }};">
+
+{% set layout = site.photo_layout if site.photo_layout in ['center', 'split', 'cover'] else 'split' %}
+{% set effective_layout = 'center' if (layout == 'cover' and not site.photo) else layout %}
+
+<header class="hero layout-{{ effective_layout }}"{% if effective_layout == 'cover' %} style="background-image:url('{{ site.photo }}');"{% endif %}>
+  {% if effective_layout != 'cover' %}
+  <div class="hero-photo">
+    {% if site.photo %}
+      <img src="{{ site.photo }}" alt="">
+    {% else %}
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-6 8-6s8 2 8 6"/></svg>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="hero-text">
+    <h1>{{ site.name }}</h1>
+    <p class="role">{{ site.role }}</p>
+    <p class="tagline">{{ site.tagline }}</p>
+    <div class="hero-actions">
+      <button class="btn btn-outline" type="button">קצת עליי</button>
+      <button class="btn btn-solid" type="button">לתיאום שיחה</button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="glass-card about">
+    <h2>קצת עליי</h2>
+    <p>{{ site.about }}</p>
+  </section>
+
+  <section class="gallery">
+    <h2>רגעים מהעבודה</h2>
+    <div class="gallery-grid">
+      {% if site.gallery %}
+        {% for img in site.gallery %}
+        <div class="gallery-tile"><img src="{{ img }}" alt=""></div>
+        {% endfor %}
+      {% else %}
+        {% for i in range(4) %}
+        <div class="gallery-tile">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-4 4-3-3-6 6"/></svg>
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="contact">
+    <h2>בואו נדבר</h2>
+    <div class="contact-grid">
+      <a class="glass-card contact-card reveal" href="mailto:{{ site.contact.email }}">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+        <span>אימייל</span>
+      </a>
+      <a class="glass-card contact-card reveal" href="tel:{{ site.contact.phone }}" style="transition-delay:.08s">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 13l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+        <span>טלפון</span>
+      </a>
+      <a class="glass-card contact-card reveal" href="https://wa.me/{{ site.contact.whatsapp }}" style="transition-delay:.16s">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z"/><path d="M8.5 10.5c0 3 2 5 5 5"/></svg>
+        <span>וואטסאפ</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="glass-card final-cta reveal" style="transition-delay:.24s">
+    <p>מוכנה להתחיל?</p>
+    <button class="btn btn-solid" type="button">קביעת פגישה עכשיו</button>
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='js/landing.js') }}"></script>
+</body>
+</html>

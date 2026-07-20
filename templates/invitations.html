@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניהול הזמנות</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<div class="page">
+
+  <div class="topbar">
+    <h1>הזמנת לקוחות חדשים</h1>
+  </div>
+  <p class="hint" style="margin-bottom:24px;">ההזמנה נשלחת ישירות למייל של הלקוח. אם שליחת המייל נכשלת, הקוד עדיין נוצר ואפשר להעתיק ולשלוח ידנית.</p>
+
+  <div class="card">
+    <label for="invite-email">אימייל הלקוח</label>
+    <div style="display:flex; gap:8px; align-items:flex-start;">
+      <input id="invite-email" type="email" style="flex:1;">
+      <button class="btn btn-primary" id="create-invite-btn" type="button" style="height:44px;">שליחת הזמנה</button>
+    </div>
+  </div>
+
+  <div class="card" id="invites-list">
+    {% if invites %}
+      {% for code, inv in invites.items() %}
+      <div class="invite-row" data-code="{{ code }}">
+        <div>
+          <p class="invite-email">{{ inv.email }}</p>
+          <p class="hint">{{ inv.created_at }}</p>
+        </div>
+        <code class="invite-code">{{ code }}</code>
+        <span class="status-badge {{ 'status-redeemed' if inv.status == 'redeemed' else 'status-pending' }}">
+          {{ 'נוצל' if inv.status == 'redeemed' else 'ממתין' }}
+        </span>
+        <button class="btn btn-light copy-code-btn" type="button" data-code="{{ code }}">העתקת קוד</button>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="hint">עדיין לא נוצרו הזמנות.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/invitations.js') }}"></script>
+</body>
+</html>

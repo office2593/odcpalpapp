@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניהול דף הנחיתה שלי</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<style>
+  .brand-banner { display: block; width: 100%; max-width: 700px; margin: 0 auto 20px; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <img class="brand-banner" src="{{ url_for('static', filename='img/banner.png') }}" alt="אורן דולב - רואה חשבון">
+
+  <div class="topbar">
+    <h1>ניהול דף הנחיתה שלי</h1>
+    <div style="display:flex; gap:8px;">
+      {% if show_invitations_link %}
+      <a class="btn btn-ghost" href="/lpapp/admin/invitations">ניהול הזמנות</a>
+      {% endif %}
+      <a class="btn btn-ghost" href="{{ public_url }}" target="_blank" rel="noopener">צפייה באתר</a>
+      <button class="btn btn-ghost" id="logout-btn" type="button">התנתקות</button>
+    </div>
+  </div>
+
+  <div class="link-row">
+    <span class="link-row-icon" aria-hidden="true">&#128279;</span>
+    <span id="public-url" class="link-row-url">{{ public_url }}</span>
+    <button class="btn btn-light" id="copy-link-btn" type="button">העתקת קישור</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" type="button" data-tab="main">תוכן ראשי</button>
+    <button class="tab" type="button" data-tab="about">אודות</button>
+    <button class="tab" type="button" data-tab="photos">תמונות</button>
+    <button class="tab" type="button" data-tab="design">עיצוב</button>
+    <button class="tab" type="button" data-tab="contact">פרטי קשר</button>
+  </div>
+
+  <section class="panel card active" data-panel="main">
+    <h2>כותרת ראשית</h2>
+    <label for="f-name">שם מלא</label>
+    <input id="f-name" type="text" value="{{ site.name }}">
+    <label for="f-role">תפקיד</label>
+    <input id="f-role" type="text" value="{{ site.role }}">
+    <label for="f-tagline">משפט פתיחה</label>
+    <input id="f-tagline" type="text" value="{{ site.tagline }}">
+  </section>
+
+  <section class="panel card" data-panel="about">
+    <h2>קצת עליי</h2>
+    <label for="f-about">טקסט אודות</label>
+    <textarea id="f-about" rows="6">{{ site.about }}</textarea>
+  </section>
+
+  <section class="panel card" data-panel="photos">
+    <h2>תמונת פרופיל</h2>
+    <div class="avatar-row">
+      <div class="avatar-tile" id="avatar-tile">
+        {% if site.photo %}
+          <img src="{{ site.photo }}" alt="">
+          <button class="tile-remove" type="button" data-url="{{ site.photo }}" aria-label="הסרת תמונה">&times;</button>
+        {% else %}
+          <span class="avatar-placeholder">&#128100;</span>
+        {% endif %}
+      </div>
+      <div>
+        <button class="btn btn-light" id="avatar-upload-btn" type="button">העלאת תמונה</button>
+        <p class="hint">JPG, PNG או WEBP</p>
+      </div>
+    </div>
+    <input type="file" id="avatar-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+
+    <h2 class="gallery-heading">גלריית תמונות</h2>
+    <div class="gallery-grid" id="gallery-grid">
+      {% for img in site.gallery %}
+      <div class="gallery-tile">
+        <img src="{{ img }}" alt="">
+        <button class="tile-remove" type="button" data-url="{{ img }}" aria-label="הסרת תמונה">&times;</button>
+      </div>
+      {% endfor %}
+      <div class="gallery-tile add-tile" id="gallery-add-tile">
+        <span>+</span>
+        <span class="hint">הוספת תמונה</span>
+      </div>
+    </div>
+    <input type="file" id="gallery-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+  </section>
+
+  <section class="panel card" data-panel="design">
+    <h2>עיצוב הדף</h2>
+    <p class="hint">בחרי את גוון הצבע של הדף שלך</p>
+    <div class="gradient-grid" id="gradient-grid">
+      {% for key, g in gradients.items() %}
+      <button class="gradient-swatch{% if key == site.theme %} selected{% endif %}" type="button" data-theme="{{ key }}"
+        style="background: linear-gradient(135deg, {{ g.colors[0] }}, {{ g.colors[1] }});">
+        <span class="check" aria-hidden="true">&#10003;</span>
+      </button>
+      <p class="swatch-label">{{ g.label }}</p>
+      {% endfor %}
+    </div>
+
+    <h2 class="layout-heading">מיקום התמונה</h2>
+    <div class="layout-grid" id="layout-grid">
+      <button class="layout-option{% if site.photo_layout == 'center' %} selected{% endif %}" type="button" data-layout="center">מרכזי למעלה</button>
+      <button class="layout-option{% if site.photo_layout == 'split' %} selected{% endif %}" type="button" data-layout="split">פיצול לצדדים</button>
+      <button class="layout-option{% if site.photo_layout == 'cover' %} selected{% endif %}" type="button" data-layout="cover">רקע מלא</button>
+    </div>
+
+    <p class="hint preview-label">תצוגה מקדימה</p>
+    <div class="theme-preview" id="theme-preview" style="background: linear-gradient(135deg, {{ gradients[site.theme].colors[0] }}, {{ gradients[site.theme].colors[1] }});">
+      <p id="preview-name">{{ site.name }}</p>
+      <p id="preview-role">{{ site.role }}</p>
+    </div>
+  </section>
+
+  <section class="panel card" data-panel="contact">
+    <h2>פרטי יצירת קשר</h2>
+    <label for="f-email">אימייל</label>
+    <input id="f-email" type="email" value="{{ site.contact.email }}">
+    <label for="f-phone">טלפון</label>
+    <input id="f-phone" type="tel" value="{{ site.contact.phone }}">
+    <label for="f-whatsapp">וואטסאפ (מספר בינלאומי, ללא + או רווחים)</label>
+    <input id="f-whatsapp" type="text" value="{{ site.contact.whatsapp }}">
+  </section>
+
+  <div class="save-bar">
+    <span class="unsaved-indicator" id="unsaved-indicator">יש שינויים שלא נשמרו</span>
+    <span class="saved-indicator" id="saved-indicator">נשמר</span>
+    <button class="btn btn-primary" id="save-btn" type="button">שמירת שינויים</button>
+  </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>
