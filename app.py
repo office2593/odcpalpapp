@@ -303,6 +303,16 @@ def get_base_url():
     return f"{proto}://{host}"
 
 
+@app.route("/lpapp/_debug")
+def _debug():
+    return jsonify({
+        "full_path": request.full_path,
+        "args": dict(request.args),
+        "headers": dict(request.headers),
+        "host_url": request.host_url,
+    })
+
+
 @app.route("/")
 def index():
     return f'<a href="/lpapp/{DEMO_SLUG}">public demo page</a> · <a href="/lpapp/login">login</a> · <a href="/lpapp/admin">admin panel</a>'
