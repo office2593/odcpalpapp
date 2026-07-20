@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ניהול דף הנחיתה שלי</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/admin.css') }}">
 <style>
   .brand-banner { display: block; width: 100%; max-width: 700px; margin: 0 auto 20px; border-radius: 12px; }
 </style>
@@ -13,7 +13,7 @@
 
 <div class="page">
 
-  <img class="brand-banner" src="{{ url_for('static', filename='img/banner.png') }}" alt="אורן דולב - רואה חשבון">
+  <img class="brand-banner" src="{{ asset_url('img/banner.png') }}" alt="אורן דולב - רואה חשבון">
 
   <div class="topbar">
     <h1>ניהול דף הנחיתה שלי</h1>
@@ -135,6 +135,6 @@
 
 </div>
 
-<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script src="{{ asset_url('js/admin.js') }}"></script>
 </body>
 </html>

@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_admin import credentials
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -90,10 +90,21 @@ def _load_service_account():
 if not firebase_admin._apps:
     firebase_admin.initialize_app(_load_service_account())
 
-# Everything the app serves is proxied through WordPress only under /lpapp/*,
-# so static assets must live under that prefix too — otherwise CSS/JS/images
-# resolve to plain "/static/..." which the WordPress proxy never sees.
-app = Flask(__name__, static_url_path="/lpapp/static")
+app = Flask(__name__)
+
+# Behind the WordPress proxy, static assets (css/js/images) load straight from
+# Railway instead of through odcpa.co.il — sidesteps the host's own edge/server
+# cache serving a stale 404 for anything under /lpapp/ that looks like a static
+# file, and it's simply less to proxy per page load either way.
+STATIC_BASE_URL = os.environ.get("STATIC_BASE_URL", "").rstrip("/")
+
+
+@app.context_processor
+def inject_asset_url():
+    def asset_url(filename):
+        path = url_for("static", filename=filename)
+        return f"{STATIC_BASE_URL}{path}" if STATIC_BASE_URL else path
+    return {"asset_url": asset_url}
 
 if os.environ.get("SECRET_KEY"):
     app.secret_key = os.environ["SECRET_KEY"]
@@ -466,7 +477,7 @@ def admin_upload():
     os.makedirs(site_upload_dir, exist_ok=True)
     file.save(os.path.join(site_upload_dir, filename))
 
-    url = f"/lpapp/uploads/{slug}/{filename}"
+    url = f"{STATIC_BASE_URL}/lpapp/uploads/{slug}/{filename}"
 
     site = sites[slug]
     if field == "photo":
@@ -494,7 +505,8 @@ def admin_remove_image():
 
     save_sites(sites)
 
-    relative = url[len("/lpapp/uploads/"):] if url.startswith("/lpapp/uploads/") else None
+    marker = "/lpapp/uploads/"
+    relative = url.split(marker, 1)[1] if marker in url else None
     if relative:
         file_path = os.path.join(UPLOAD_DIR, relative.replace("/", os.sep))
         if os.path.isfile(file_path):

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>כניסה למערכת</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/admin.css') }}">
 <style>
   .login-wrap { max-width: 420px; margin: 60px auto; padding: 0 20px; }
   .step { display: none; }
@@ -19,7 +19,7 @@
 </head>
 <body>
 
-<img class="brand-banner" src="{{ url_for('static', filename='img/banner.png') }}" alt="אורן דולב - רואה חשבון">
+<img class="brand-banner" src="{{ asset_url('img/banner.png') }}" alt="אורן דולב - רואה חשבון">
 
 <div class="login-wrap">
 
@@ -67,7 +67,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
-<script src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
-<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+<script src="{{ asset_url('js/firebase-config.js') }}"></script>
+<script src="{{ asset_url('js/login.js') }}"></script>
 </body>
 </html>
