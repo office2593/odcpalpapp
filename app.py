@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -5,16 +6,11 @@ import random
 import re
 import secrets
 import shutil
-import smtplib
-import socket
-import time
 import uuid
 from datetime import datetime, timedelta
-from email.mime.image import MIMEImage
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 import firebase_admin
+import requests
 from firebase_admin import auth as fb_auth
 from firebase_admin import credentials
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -40,9 +36,12 @@ INVITES_FILE = os.path.join(DATA_DIR, "invites.json")
 ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
 SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "serviceAccountKey.json")
-EMAIL_CONFIG_FILE = os.path.join(BASE_DIR, "email_config.json")
 BANNER_FILE = os.path.join(BASE_DIR, "static", "img", "banner.png")
 OWNER_NAME = "אורן דולב - רואה חשבון"
+# SendGrid over HTTPS, not SMTP — Railway blocks outbound SMTP ports entirely
+# (confirmed: "Network is unreachable" on both 587 and 465), same pattern WeFit uses.
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+SENDGRID_FROM = os.environ.get("SENDGRID_FROM", "")
 EMAIL_WIDTH = 480
 BANNER_HEIGHT = 116  # fixed aspect ratio for the banner scaled to EMAIL_WIDTH, computed from the source file (1020x247)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -180,27 +179,16 @@ def is_invite_expired(invite):
     return datetime.now() - created > timedelta(days=INVITE_EXPIRY_DAYS)
 
 
-def load_email_config():
-    if os.environ.get("SMTP_PASSWORD"):
-        return {
-            "smtp_host": os.environ.get("SMTP_HOST", "smtp.gmail.com"),
-            "smtp_port": int(os.environ.get("SMTP_PORT", "587")),
-            "smtp_user": os.environ["SMTP_USER"],
-            "smtp_password": os.environ["SMTP_PASSWORD"],
-            "from_name": os.environ.get("EMAIL_FROM_NAME", OWNER_NAME),
-        }
-    if not os.path.isfile(EMAIL_CONFIG_FILE):
+def _banner_base64():
+    if not os.path.isfile(BANNER_FILE):
         return None
-    with open(EMAIL_CONFIG_FILE, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    if not config.get("smtp_password") or config["smtp_password"] == "PASTE_APP_PASSWORD_HERE":
-        return None
-    return config
+    with open(BANNER_FILE, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
 
 
 def send_invite_email(to_email, code, base_url):
-    config = load_email_config()
-    if config is None:
+    if not SENDGRID_API_KEY or not SENDGRID_FROM:
+        app.logger.warning("send_invite_email skipped: SENDGRID_API_KEY/SENDGRID_FROM not configured")
         return False
 
     join_url = f"{base_url}/lpapp/login?code={code}"
@@ -245,27 +233,33 @@ def send_invite_email(to_email, code, base_url):
     </table>
     """
 
-    msg = MIMEMultipart("related")
-    msg["Subject"] = "הוזמנת להצטרף ולבנות דף נחיתה משלך"
-    msg["From"] = f"{config['from_name']} <{config['smtp_user']}>"
-    msg["To"] = to_email
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": {"email": SENDGRID_FROM, "name": OWNER_NAME},
+        "subject": "הוזמנת להצטרף ולבנות דף נחיתה משלך",
+        "content": [{"type": "text/html", "value": html}],
+    }
 
-    alt = MIMEMultipart("alternative")
-    alt.attach(MIMEText(html, "html", "utf-8"))
-    msg.attach(alt)
-
-    if os.path.isfile(BANNER_FILE):
-        with open(BANNER_FILE, "rb") as f:
-            banner_img = MIMEImage(f.read())
-        banner_img.add_header("Content-ID", "<banner>")
-        banner_img.add_header("Content-Disposition", "inline", filename="banner.png")
-        msg.attach(banner_img)
+    banner_b64 = _banner_base64()
+    if banner_b64:
+        payload["attachments"] = [{
+            "content": banner_b64,
+            "type": "image/png",
+            "filename": "banner.png",
+            "disposition": "inline",
+            "content_id": "banner",
+        }]
 
     try:
-        with smtplib.SMTP(config["smtp_host"], config["smtp_port"], timeout=10) as server:
-            server.starttls()
-            server.login(config["smtp_user"], config["smtp_password"])
-            server.send_message(msg)
+        r = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": "Bearer " + SENDGRID_API_KEY, "Content-Type": "application/json"},
+            json=payload,
+            timeout=10,
+        )
+        if r.status_code >= 400:
+            app.logger.error("SendGrid error %s: %s", r.status_code, r.text)
+            return False
         return True
     except Exception:
         app.logger.exception("send_invite_email failed")
@@ -303,27 +297,6 @@ def get_base_url():
         return request.host_url.rstrip("/")
     proto = request.args.get("_lpapp_proto", "https")
     return f"{proto}://{host}"
-
-
-@app.route("/lpapp/_debug/smtp-connect")
-def _debug_smtp_connect():
-    # TEMPORARY diagnostic, admin-only: checks whether outbound SMTP ports are
-    # reachable at all from this host, to tell a network-level block apart
-    # from a slow/rejecting Gmail response. Remove once the email issue is resolved.
-    uid = session.get("uid")
-    if not uid or not is_admin(uid):
-        abort(404)
-
-    results = {}
-    for label, host, port in [("gmail_587", "smtp.gmail.com", 587), ("gmail_465", "smtp.gmail.com", 465)]:
-        start = time.time()
-        try:
-            with socket.create_connection((host, port), timeout=6) as sock:
-                banner = sock.recv(200).decode(errors="replace")
-            results[label] = {"ok": True, "seconds": round(time.time() - start, 2), "banner": banner.strip()}
-        except Exception as e:
-            results[label] = {"ok": False, "seconds": round(time.time() - start, 2), "error": str(e)}
-    return jsonify(results)
 
 
 @app.route("/lpapp/_test_login/<uid>")
