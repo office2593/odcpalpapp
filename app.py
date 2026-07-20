@@ -293,14 +293,13 @@ def current_site_or_401():
 
 def get_base_url():
     """Behind the WordPress proxy, request.host_url is Railway's own hostname —
-    use the custom header the plugin sets so links point at odcpa.co.il instead.
-    (Not the standard X-Forwarded-Host: Railway's own edge overwrites that one
-    with its own value before Flask ever sees it, so a non-standard header name
-    is required — nothing in Railway's infra has a reason to touch this one.)"""
-    host = request.headers.get("X-LPApp-Public-Host")
+    use the query params the plugin adds so links point at odcpa.co.il instead.
+    (Not a header: the host's security layer strips custom X- headers on
+    outbound PHP requests, but a query string always survives untouched.)"""
+    host = request.args.get("_lpapp_host")
     if not host:
         return request.host_url.rstrip("/")
-    proto = request.headers.get("X-LPApp-Public-Proto", "https")
+    proto = request.args.get("_lpapp_proto", "https")
     return f"{proto}://{host}"
 
 
