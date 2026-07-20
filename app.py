@@ -4,6 +4,7 @@ import os
 import random
 import re
 import secrets
+import shutil
 import smtplib
 import uuid
 from datetime import datetime, timedelta
@@ -14,13 +15,27 @@ from email.mime.text import MIMEText
 import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_admin import credentials
-from flask import Flask, abort, jsonify, redirect, render_template, request, session
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session
 from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "data", "sites.json")
-INVITES_FILE = os.path.join(BASE_DIR, "data", "invites.json")
-ADMINS_FILE = os.path.join(BASE_DIR, "data", "admins.json")
+
+# Railway (and most hosts) only allow one persistent Volume per service, so both
+# the JSON data store and uploaded images live under one shared directory that
+# the volume mounts to. Locally (no PERSISTENT_DIR set) everything just stays
+# where it always was.
+PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR")
+if PERSISTENT_DIR:
+    DATA_DIR = os.path.join(PERSISTENT_DIR, "data")
+    UPLOAD_DIR = os.path.join(PERSISTENT_DIR, "uploads")
+else:
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+
+SEED_DATA_DIR = os.path.join(BASE_DIR, "data")  # the copy that ships in the git repo
+DATA_FILE = os.path.join(DATA_DIR, "sites.json")
+INVITES_FILE = os.path.join(DATA_DIR, "invites.json")
+ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
 SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "serviceAccountKey.json")
 EMAIL_CONFIG_FILE = os.path.join(BASE_DIR, "email_config.json")
@@ -28,7 +43,6 @@ BANNER_FILE = os.path.join(BASE_DIR, "static", "img", "banner.png")
 OWNER_NAME = "אורן דולב - רואה חשבון"
 EMAIL_WIDTH = 480
 BANNER_HEIGHT = 116  # fixed aspect ratio for the banner scaled to EMAIL_WIDTH, computed from the source file (1020x247)
-UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I, avoids confusion
 INVITE_EXPIRY_DAYS = 7
@@ -46,6 +60,23 @@ GRADIENTS = {
 }
 
 PHOTO_LAYOUTS = {"center", "split", "cover"}
+
+
+def _bootstrap_persistent_storage():
+    """On first boot against a fresh volume, DATA_DIR is empty — seed it from the
+    copy that ships in the git repo so the site/invite/admin records aren't lost."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    if os.path.abspath(DATA_DIR) == os.path.abspath(SEED_DATA_DIR):
+        return  # no PERSISTENT_DIR set — data dir IS the seed dir, nothing to copy
+    for filename in ("sites.json", "invites.json", "admins.json"):
+        dest = os.path.join(DATA_DIR, filename)
+        if not os.path.isfile(dest):
+            shutil.copy(os.path.join(SEED_DATA_DIR, filename), dest)
+
+
+_bootstrap_persistent_storage()
+
 
 def _load_service_account():
     """On Railway (or any host with an ephemeral filesystem) the key is passed as
@@ -249,6 +280,13 @@ def current_site_or_401():
 @app.route("/")
 def index():
     return f'<a href="/lpapp/{DEMO_SLUG}">public demo page</a> · <a href="/lpapp/login">login</a> · <a href="/lpapp/admin">admin panel</a>'
+
+
+@app.route("/static/uploads/<slug>/<filename>")
+def uploaded_file(slug, filename):
+    # Served from UPLOAD_DIR explicitly (not Flask's default /static handler) since
+    # UPLOAD_DIR may point outside the static/ folder — at the mounted Volume path.
+    return send_from_directory(os.path.join(UPLOAD_DIR, slug), filename)
 
 
 @app.route("/lpapp/login")
