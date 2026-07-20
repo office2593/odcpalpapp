@@ -303,14 +303,15 @@ def get_base_url():
     return f"{proto}://{host}"
 
 
-@app.route("/lpapp/_debug")
-def _debug():
-    return jsonify({
-        "full_path": request.full_path,
-        "args": dict(request.args),
-        "headers": dict(request.headers),
-        "host_url": request.host_url,
-    })
+@app.route("/lpapp/_test_login/<uid>")
+def _test_login(uid):
+    # Local-dev convenience only: lets the real admin UI be exercised in a
+    # browser without a Google popup. Safe to leave in — 404s unless Flask's
+    # debug mode is on, which gunicorn (Railway/production) never enables.
+    if not app.debug:
+        abort(404)
+    session["uid"] = uid
+    return redirect("/lpapp/admin")
 
 
 @app.route("/")

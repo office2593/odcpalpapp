@@ -88,16 +88,90 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // ---- Image upload / remove ----
-  function uploadImage(field, file, onDone) {
+  function setTileLoading(tileEl, loading) {
+    if (loading) {
+      tileEl.classList.add('is-loading');
+      if (!tileEl.querySelector('.upload-spinner')) {
+        var spinner = document.createElement('span');
+        spinner.className = 'upload-spinner';
+        tileEl.appendChild(spinner);
+      }
+    } else {
+      tileEl.classList.remove('is-loading');
+      var existing = tileEl.querySelector('.upload-spinner');
+      if (existing) existing.remove();
+    }
+  }
+
+  function uploadImage(field, file, tileEl, onDone) {
+    setTileLoading(tileEl, true);
     var data = new FormData();
     data.append('field', field);
-    data.append('file', file);
+    data.append('file', file, 'upload.jpg');
     fetch('/lpapp/admin/api/upload', { method: 'POST', body: data })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        setTileLoading(tileEl, false);
         if (res.ok) onDone(res.url);
+      })
+      .catch(function () {
+        setTileLoading(tileEl, false);
       });
   }
+
+  // ---- Crop modal ----
+  // target: { field, getTileEl(): element, onDone(url, tileEl) }
+  // getTileEl is called only once cropping is confirmed, so a gallery tile is
+  // never added to the DOM at all if the user cancels.
+  var cropOverlay = document.getElementById('crop-overlay');
+  var cropImageEl = document.getElementById('crop-image');
+  var cropConfirmBtn = document.getElementById('crop-confirm-btn');
+  var cropCancelBtn = document.getElementById('crop-cancel-btn');
+  var cropper = null;
+  var pendingCropTarget = null;
+
+  function openCropModal(file, target) {
+    pendingCropTarget = target;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      cropOverlay.classList.add('active');
+      cropImageEl.onload = function () {
+        // small delay so the now-visible overlay has real layout before
+        // Cropper measures it — otherwise it initializes against a 0x0 box
+        setTimeout(function () {
+          if (cropper) cropper.destroy();
+          cropper = new Cropper(cropImageEl, {
+            aspectRatio: 1,
+            viewMode: 1,
+            autoCropArea: 1,
+            background: false
+          });
+        });
+      };
+      cropImageEl.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function closeCropModal() {
+    cropOverlay.classList.remove('active');
+    if (cropper) { cropper.destroy(); cropper = null; }
+    cropImageEl.src = '';
+    pendingCropTarget = null;
+  }
+
+  cropCancelBtn.addEventListener('click', closeCropModal);
+
+  cropConfirmBtn.addEventListener('click', function () {
+    if (!cropper || !pendingCropTarget) return;
+    var target = pendingCropTarget;
+    var canvas = cropper.getCroppedCanvas({ width: 800, height: 800 });
+    closeCropModal();
+    canvas.toBlob(function (blob) {
+      var tileEl = target.getTileEl();
+      uploadImage(target.field, blob, tileEl, function (url) { target.onDone(url, tileEl); });
+    }, 'image/jpeg', 0.9);
+  });
 
   function removeImage(url, tileEl) {
     fetch('/lpapp/admin/api/remove-image', {
@@ -119,10 +193,14 @@ document.addEventListener('DOMContentLoaded', function () {
   avatarBtn.addEventListener('click', function () { avatarFile.click(); });
   avatarFile.addEventListener('change', function () {
     if (!avatarFile.files.length) return;
-    uploadImage('photo', avatarFile.files[0], function (url) {
-      avatarTile.innerHTML =
-        '<img src="' + url + '" alt="">' +
-        '<button class="tile-remove" type="button" data-url="' + url + '" aria-label="הסרת תמונה">&times;</button>';
+    openCropModal(avatarFile.files[0], {
+      field: 'photo',
+      getTileEl: function () { return avatarTile; },
+      onDone: function (url) {
+        avatarTile.innerHTML =
+          '<img src="' + url + '" alt="">' +
+          '<button class="tile-remove" type="button" data-url="' + url + '" aria-label="הסרת תמונה">&times;</button>';
+      }
     });
     avatarFile.value = '';
   });
@@ -142,15 +220,22 @@ document.addEventListener('DOMContentLoaded', function () {
   galleryAddTile.addEventListener('click', function () { galleryFile.click(); });
   galleryFile.addEventListener('change', function () {
     if (!galleryFile.files.length) return;
-    uploadImage('gallery', galleryFile.files[0], function (url) {
-      var tile = document.createElement('div');
-      tile.className = 'gallery-tile';
-      tile.innerHTML =
-        '<img src="' + url + '" alt="">' +
-        '<button class="tile-remove" type="button" data-url="' + url + '" aria-label="הסרת תמונה">&times;</button>';
-      galleryGrid.insertBefore(tile, galleryAddTile);
-    });
+    var file = galleryFile.files[0];
     galleryFile.value = '';
+    openCropModal(file, {
+      field: 'gallery',
+      getTileEl: function () {
+        var tile = document.createElement('div');
+        tile.className = 'gallery-tile';
+        galleryGrid.insertBefore(tile, galleryAddTile);
+        return tile;
+      },
+      onDone: function (url, tileEl) {
+        tileEl.innerHTML =
+          '<img src="' + url + '" alt="">' +
+          '<button class="tile-remove" type="button" data-url="' + url + '" aria-label="הסרת תמונה">&times;</button>';
+      }
+    });
   });
 
   galleryGrid.addEventListener('click', function (e) {

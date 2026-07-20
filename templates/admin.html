@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ניהול דף הנחיתה שלי</title>
 <link rel="stylesheet" href="{{ asset_url('css/admin.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
 <style>
   .brand-banner { display: block; width: 100%; max-width: 700px; margin: 0 auto 20px; border-radius: 12px; }
 </style>
@@ -95,19 +96,30 @@
     <p class="hint">בחרי את גוון הצבע של הדף שלך</p>
     <div class="gradient-grid" id="gradient-grid">
       {% for key, g in gradients.items() %}
-      <button class="gradient-swatch{% if key == site.theme %} selected{% endif %}" type="button" data-theme="{{ key }}"
-        style="background: linear-gradient(135deg, {{ g.colors[0] }}, {{ g.colors[1] }});">
-        <span class="check" aria-hidden="true">&#10003;</span>
-      </button>
-      <p class="swatch-label">{{ g.label }}</p>
+      <div class="gradient-item">
+        <button class="gradient-swatch{% if key == site.theme %} selected{% endif %}" type="button" data-theme="{{ key }}"
+          style="background: linear-gradient(135deg, {{ g.colors[0] }}, {{ g.colors[1] }});">
+          <span class="check" aria-hidden="true">&#10003;</span>
+        </button>
+        <p class="swatch-label">{{ g.label }}</p>
+      </div>
       {% endfor %}
     </div>
 
     <h2 class="layout-heading">מיקום התמונה</h2>
     <div class="layout-grid" id="layout-grid">
-      <button class="layout-option{% if site.photo_layout == 'center' %} selected{% endif %}" type="button" data-layout="center">מרכזי למעלה</button>
-      <button class="layout-option{% if site.photo_layout == 'split' %} selected{% endif %}" type="button" data-layout="split">פיצול לצדדים</button>
-      <button class="layout-option{% if site.photo_layout == 'cover' %} selected{% endif %}" type="button" data-layout="cover">רקע מלא</button>
+      <button class="layout-option{% if site.photo_layout == 'center' %} selected{% endif %}" type="button" data-layout="center">
+        <span class="layout-preview layout-preview-center"><span class="lp-dot"></span><span class="lp-line"></span><span class="lp-line short"></span></span>
+        <span class="layout-option-label">מרכזי למעלה</span>
+      </button>
+      <button class="layout-option{% if site.photo_layout == 'split' %} selected{% endif %}" type="button" data-layout="split">
+        <span class="layout-preview layout-preview-split"><span class="lp-square"></span><span class="lp-lines"><span class="lp-line"></span><span class="lp-line short"></span></span></span>
+        <span class="layout-option-label">פיצול לצדדים</span>
+      </button>
+      <button class="layout-option{% if site.photo_layout == 'cover' %} selected{% endif %}" type="button" data-layout="cover">
+        <span class="layout-preview layout-preview-cover"><span class="lp-line"></span><span class="lp-line short"></span></span>
+        <span class="layout-option-label">רקע מלא</span>
+      </button>
     </div>
 
     <p class="hint preview-label">תצוגה מקדימה</p>
@@ -135,6 +147,20 @@
 
 </div>
 
+<div class="crop-overlay" id="crop-overlay">
+  <div class="crop-modal">
+    <p class="crop-title">חיתוך תמונה</p>
+    <div class="crop-image-wrap">
+      <img id="crop-image" alt="">
+    </div>
+    <div class="crop-actions">
+      <button class="btn btn-light" id="crop-cancel-btn" type="button">ביטול</button>
+      <button class="btn btn-primary" id="crop-confirm-btn" type="button">אישור וחיתוך</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script src="{{ asset_url('js/admin.js') }}"></script>
 </body>
 </html>
