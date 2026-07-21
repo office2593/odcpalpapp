@@ -1,14 +1,9 @@
 document.addEventListener('DOMContentLoaded', function () {
   firebase.initializeApp(firebaseConfig);
   var auth = firebase.auth();
-  // TEMPORARY while we're debugging reCAPTCHA Enterprise domain config —
-  // lets Firebase test phone numbers work without a real reCAPTCHA/SMS check.
-  // MUST be removed before real users sign up with real phone numbers.
-  auth.settings.appVerificationDisabledForTesting = true;
 
   var email = null;
   var code = null;
-  var confirmationResult = null;
 
   function showStep(name) {
     document.querySelectorAll('.step').forEach(function (s) { s.classList.remove('active'); });
@@ -100,59 +95,58 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // ---- Step 3: phone verification ----
-  function getRecaptcha() {
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
-    }
-    return window.recaptchaVerifier;
-  }
+  // Our own OTP over Twilio, not Firebase's phone auth — this project's
+  // reCAPTCHA Enterprise config is stuck broken, so we sidestep it entirely.
+  var OTP_ERROR_MESSAGES = {
+    wrong_code: 'קוד שגוי, נסה/י שוב.',
+    expired_code: 'הקוד פג תוקף, יש לשלוח קוד חדש.',
+    too_many_attempts: 'יותר מדי ניסיונות שגויים, יש לשלוח קוד חדש.',
+    sms_failed: 'שליחת ה-SMS נכשלה, נסה/י שוב.',
+    no_pending_code: 'לא נשלח קוד עדיין.'
+  };
 
   document.getElementById('send-otp-btn').addEventListener('click', function () {
     hideError('phone-error');
     var btn = document.getElementById('send-otp-btn');
 
-    try {
-      var raw = document.getElementById('phone-input').value.trim().replace(/\D/g, '');
-      if (!raw) {
-        showError('phone-error', 'נא להזין מספר טלפון.');
-        return;
-      }
-      if (!auth.currentUser) {
-        showError('phone-error', 'החיבור פג. נא לרענן את הדף ולהתחבר מחדש עם Google.');
-        return;
-      }
-
-      var local = raw.replace(/^0/, '');
-      var phoneNumber = '+972' + local;
-
-      btn.disabled = true;
-      btn.textContent = 'שולח...';
-
-      auth.currentUser.linkWithPhoneNumber(phoneNumber, getRecaptcha())
-        .then(function (result) {
-          confirmationResult = result;
-          document.getElementById('phone-entry').style.display = 'none';
-          document.getElementById('otp-entry').style.display = 'block';
-          document.querySelector('.otp-row input').focus();
-        })
-        .catch(function (err) {
-          console.error('linkWithPhoneNumber failed:', err);
-          showError('phone-error', 'שליחת הקוד נכשלה (' + err.code + '): ' + err.message);
-          if (window.recaptchaVerifier) {
-            window.recaptchaVerifier.clear();
-            window.recaptchaVerifier = null;
-          }
-        })
-        .finally(function () {
-          btn.disabled = false;
-          btn.textContent = 'שליחת קוד';
-        });
-    } catch (err) {
-      console.error('send-otp click handler threw:', err);
-      showError('phone-error', 'שגיאה: ' + err.message);
-      btn.disabled = false;
-      btn.textContent = 'שליחת קוד';
+    var raw = document.getElementById('phone-input').value.trim();
+    if (!raw) {
+      showError('phone-error', 'נא להזין מספר טלפון.');
+      return;
     }
+    if (!auth.currentUser) {
+      showError('phone-error', 'החיבור פג. נא לרענן את הדף ולהתחבר מחדש עם Google.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'שולח...';
+
+    auth.currentUser.getIdToken()
+      .then(function (idToken) {
+        return fetch('/lpapp/signup/api/send-phone-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: idToken, phone: raw })
+        }).then(function (r) { return r.json(); });
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          showError('phone-error', OTP_ERROR_MESSAGES[res.error] || errorText(res));
+          return;
+        }
+        document.getElementById('phone-entry').style.display = 'none';
+        document.getElementById('otp-entry').style.display = 'block';
+        document.querySelector('.otp-row input').focus();
+      })
+      .catch(function (err) {
+        console.error('send-phone-otp failed:', err);
+        showError('phone-error', 'שגיאה: ' + err.message);
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = 'שליחת קוד';
+      });
   });
 
   // Auto-advance focus between the 6 OTP boxes
@@ -174,26 +168,40 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    confirmationResult.confirm(otp)
-      .then(function (result) {
-        return result.user.getIdToken(true);
-      })
+    auth.currentUser.getIdToken()
       .then(function (idToken) {
-        return fetch('/lpapp/signup/api/complete-signup', {
+        return fetch('/lpapp/signup/api/verify-phone-otp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken: idToken, code: code })
+          body: JSON.stringify({ idToken: idToken, otp: otp })
         }).then(function (r) { return r.json(); });
       })
       .then(function (res) {
         if (!res.ok) {
-          showError('phone-error', errorText(res));
-          return;
+          showError('phone-error', OTP_ERROR_MESSAGES[res.error] || errorText(res));
+          return null;
         }
-        window.location.href = '/lpapp/admin';
+        return auth.currentUser.getIdToken();
+      })
+      .then(function (idToken) {
+        if (!idToken) return;
+        return fetch('/lpapp/signup/api/complete-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: idToken, code: code })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok) {
+              showError('phone-error', errorText(res));
+              return;
+            }
+            window.location.href = '/lpapp/admin';
+          });
       })
       .catch(function (err) {
-        showError('phone-error', 'קוד האימות שגוי: ' + err.message);
+        console.error('verify-phone-otp failed:', err);
+        showError('phone-error', 'שגיאה: ' + err.message);
       });
   });
 });

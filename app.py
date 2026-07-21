@@ -34,6 +34,7 @@ SEED_DATA_DIR = os.path.join(BASE_DIR, "data")  # the copy that ships in the git
 DATA_FILE = os.path.join(DATA_DIR, "sites.json")
 INVITES_FILE = os.path.join(DATA_DIR, "invites.json")
 ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
+PHONE_OTPS_FILE = os.path.join(DATA_DIR, "phone_otps.json")
 SECRET_KEY_FILE = os.path.join(BASE_DIR, "secret_key.txt")
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "serviceAccountKey.json")
 BANNER_FILE = os.path.join(BASE_DIR, "static", "img", "banner.png")
@@ -42,6 +43,16 @@ OWNER_NAME = "אורן דולב - רואה חשבון"
 # (confirmed: "Network is unreachable" on both 587 and 465), same pattern WeFit uses.
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 SENDGRID_FROM = os.environ.get("SENDGRID_FROM", "")
+# Twilio over HTTPS for phone verification — Firebase's own phone auth requires
+# reCAPTCHA Enterprise, which was left in a broken state on this project (client
+# SDK gets "Recaptcha verification failed - MALFORMED" no matter how it's
+# configured); doing OTP ourselves sidesteps that entirely. Same account/pattern
+# already used and working in the user's other project, GoPlan.
+TWILIO_SID = os.environ.get("TWILIO_SID", "")
+TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN", "")
+TWILIO_FROM = os.environ.get("TWILIO_FROM", "")
+OTP_EXPIRY_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
 EMAIL_WIDTH = 480
 BANNER_HEIGHT = 116  # fixed aspect ratio for the banner scaled to EMAIL_WIDTH, computed from the source file (1020x247)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -68,6 +79,11 @@ def _bootstrap_persistent_storage():
     copy that ships in the git repo so the site/invite/admin records aren't lost."""
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    if not os.path.isfile(PHONE_OTPS_FILE):
+        with open(PHONE_OTPS_FILE, "w", encoding="utf-8") as f:
+            f.write("{}")  # no seed content needed — OTPs are always short-lived
+
     if os.path.abspath(DATA_DIR) == os.path.abspath(SEED_DATA_DIR):
         return  # no PERSISTENT_DIR set — data dir IS the seed dir, nothing to copy
     for filename in ("sites.json", "invites.json", "admins.json"):
@@ -177,6 +193,47 @@ def generate_invite_code(invites):
 def is_invite_expired(invite):
     created = datetime.strptime(invite["created_at"], "%d.%m.%Y %H:%M")
     return datetime.now() - created > timedelta(days=INVITE_EXPIRY_DAYS)
+
+
+def normalize_phone(raw):
+    """Local Israeli input like '0501234567' -> E.164 '+972501234567'.
+    Already-international numbers ('+972...' or '972...') pass through as-is."""
+    digits = re.sub(r"\D", "", raw or "")
+    if raw and raw.strip().startswith("+"):
+        return "+" + digits
+    if digits.startswith("972"):
+        return "+" + digits
+    return "+972" + digits.lstrip("0")
+
+
+def load_phone_otps():
+    with open(PHONE_OTPS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_phone_otps(otps):
+    with open(PHONE_OTPS_FILE, "w", encoding="utf-8") as f:
+        json.dump(otps, f, ensure_ascii=False, indent=2)
+
+
+def send_sms(to_phone, body):
+    if not TWILIO_SID or not TWILIO_TOKEN or not TWILIO_FROM:
+        app.logger.warning("send_sms skipped: TWILIO_SID/TWILIO_TOKEN/TWILIO_FROM not configured")
+        return False
+    try:
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
+            auth=(TWILIO_SID, TWILIO_TOKEN),
+            data={"From": TWILIO_FROM, "To": to_phone, "Body": body},
+            timeout=10,
+        )
+        if r.status_code >= 300:
+            app.logger.error("Twilio error %s: %s", r.status_code, r.text)
+            return False
+        return True
+    except Exception:
+        app.logger.exception("send_sms failed")
+        return False
 
 
 def _banner_base64():
@@ -349,6 +406,77 @@ def signup_session_login():
     return jsonify({"ok": True, "status": "new", "email": decoded.get("email", "")})
 
 
+@app.route("/lpapp/signup/api/send-phone-otp", methods=["POST"])
+def signup_send_phone_otp():
+    """Own phone verification, not Firebase's — Firebase Phone Auth on this
+    project requires reCAPTCHA Enterprise, which is stuck in a broken state
+    client-side (auth/captcha-check-failed) no matter how it's configured.
+    Sends via Twilio (same account already used in the user's GoPlan project)."""
+    payload = request.get_json(force=True, silent=True) or {}
+    id_token = payload.get("idToken")
+    phone = normalize_phone(payload.get("phone"))
+
+    try:
+        decoded = fb_auth.verify_id_token(id_token)
+    except Exception:
+        app.logger.exception("verify_id_token failed")
+        return jsonify({"ok": False, "error": "invalid_token"}), 401
+
+    uid = decoded["uid"]
+    otp_code = "".join(random.choices("0123456789", k=6))
+
+    otps = load_phone_otps()
+    otps[uid] = {
+        "phone": phone,
+        "code": otp_code,
+        "created_at": datetime.now().isoformat(),
+        "attempts": 0,
+        "verified": False,
+    }
+    save_phone_otps(otps)
+
+    sent = send_sms(phone, f"קוד האימות שלך: {otp_code}")
+    if not sent:
+        return jsonify({"ok": False, "error": "sms_failed"}), 502
+    return jsonify({"ok": True})
+
+
+@app.route("/lpapp/signup/api/verify-phone-otp", methods=["POST"])
+def signup_verify_phone_otp():
+    payload = request.get_json(force=True, silent=True) or {}
+    id_token = payload.get("idToken")
+    submitted = (payload.get("otp") or "").strip()
+
+    try:
+        decoded = fb_auth.verify_id_token(id_token)
+    except Exception:
+        app.logger.exception("verify_id_token failed")
+        return jsonify({"ok": False, "error": "invalid_token"}), 401
+
+    uid = decoded["uid"]
+    otps = load_phone_otps()
+    record = otps.get(uid)
+    if record is None:
+        return jsonify({"ok": False, "error": "no_pending_code"}), 404
+
+    created = datetime.fromisoformat(record["created_at"])
+    if datetime.now() - created > timedelta(minutes=OTP_EXPIRY_MINUTES):
+        return jsonify({"ok": False, "error": "expired_code"}), 410
+    if record["attempts"] >= OTP_MAX_ATTEMPTS:
+        return jsonify({"ok": False, "error": "too_many_attempts"}), 429
+
+    if submitted != record["code"]:
+        record["attempts"] += 1
+        otps[uid] = record
+        save_phone_otps(otps)
+        return jsonify({"ok": False, "error": "wrong_code"}), 400
+
+    record["verified"] = True
+    otps[uid] = record
+    save_phone_otps(otps)
+    return jsonify({"ok": True})
+
+
 @app.route("/lpapp/signup/api/complete-signup", methods=["POST"])
 def signup_complete():
     """Called after Google login + invite code + phone verification all succeeded
@@ -365,12 +493,15 @@ def signup_complete():
 
     uid = decoded["uid"]
     email = (decoded.get("email") or "").strip().lower()
-    phone = decoded.get("phone_number")
 
     if not email:
         return jsonify({"ok": False, "error": "no_email"}), 400
-    if not phone:
+
+    otps = load_phone_otps()
+    otp_record = otps.get(uid)
+    if not otp_record or not otp_record.get("verified"):
         return jsonify({"ok": False, "error": "phone_not_verified"}), 400
+    phone = otp_record["phone"]
 
     invites = load_invites()
     invite = invites.get(code)
@@ -408,6 +539,9 @@ def signup_complete():
     invite["redeemed_at"] = datetime.now().strftime("%d.%m.%Y %H:%M")
     invites[code] = invite
     save_invites(invites)
+
+    del otps[uid]
+    save_phone_otps(otps)
 
     session["uid"] = uid
     return jsonify({"ok": True, "slug": slug})
