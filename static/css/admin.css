@@ -891,3 +891,70 @@ textarea {
   gap: 10px;
   margin-top: 16px;
 }
+
+/* QR modal (shares .crop-overlay show/hide) */
+.qr-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.qr-modal {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.qr-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.qr-modal-sub {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 0 0 20px;
+}
+
+.qr-code-box {
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 16px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.qr-code-box img,
+.qr-code-box canvas {
+  width: 180px;
+  height: 180px;
+}
+
+.qr-code-url {
+  font-family: "Consolas", monospace;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin: 0 0 20px;
+}
+
+.qr-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.qr-modal-actions .btn {
+  flex: 1;
+  height: 40px;
+  font-size: 14px;
+}

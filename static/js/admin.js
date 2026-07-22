@@ -87,6 +87,40 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  // ---- QR code ----
+  var qrOverlay = document.getElementById('qr-overlay');
+  var qrCodeBox = document.getElementById('qr-code-box');
+  var qrCodeUrlEl = document.getElementById('qr-code-url');
+
+  qrCodeUrlEl.textContent = publicUrl.replace(/^https?:\/\//, '');
+  new QRCode(qrCodeBox, {
+    text: publicUrl,
+    width: 180,
+    height: 180,
+    colorDark: '#1c1c1e',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  document.getElementById('show-qr-btn').addEventListener('click', function () {
+    qrOverlay.classList.add('active');
+  });
+  document.getElementById('qr-close-btn').addEventListener('click', function () {
+    qrOverlay.classList.remove('active');
+  });
+  document.getElementById('qr-download-btn').addEventListener('click', function () {
+    var canvas = qrCodeBox.querySelector('canvas');
+    var img = qrCodeBox.querySelector('img');
+    var dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+    if (!dataUrl) return;
+    var a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'qr-code.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
   // ---- Image upload / remove ----
   function setTileLoading(tileEl, loading) {
     if (loading) {

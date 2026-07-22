@@ -30,6 +30,19 @@
   <div class="link-row">
     <span class="link-row-icon" aria-hidden="true">&#128279;</span>
     <span id="public-url" class="link-row-url">{{ public_url }}</span>
+    <button class="btn qr-btn" id="show-qr-btn" type="button" title="הצגת קוד QR" aria-label="הצגת קוד QR">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <line x1="14" y1="14" x2="14" y2="15.5"/>
+        <line x1="14" y1="18.5" x2="14" y2="21"/>
+        <line x1="17.5" y1="14" x2="21" y2="14"/>
+        <line x1="14" y1="21" x2="17" y2="21"/>
+        <line x1="20" y1="17.5" x2="21" y2="17.5"/>
+        <line x1="20" y1="21" x2="21" y2="21"/>
+      </svg>
+    </button>
     <button class="btn btn-light" id="copy-link-btn" type="button">העתקת קישור</button>
   </div>
 
@@ -206,7 +219,24 @@
   </div>
 </div>
 
+<div class="crop-overlay" id="qr-overlay">
+  <div class="qr-modal">
+    <p class="qr-modal-title">קוד QR לדף שלך</p>
+    <p class="qr-modal-sub">סריקה עם מצלמת הטלפון מובילה ישירות לדף הנחיתה</p>
+    <div class="qr-code-box" id="qr-code-box"></div>
+    <p class="qr-code-url" id="qr-code-url"></p>
+    <div class="qr-modal-actions">
+      <button class="btn btn-light" id="qr-close-btn" type="button">סגירה</button>
+      <button class="btn btn-primary" id="qr-download-btn" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-inline-end:6px;"><path d="M12 5v11M6.5 12.5L12 18l5.5-5.5"/><line x1="5" y1="21" x2="19" y2="21"/></svg>
+        הורדת QR
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="{{ asset_url('js/admin.js') }}"></script>
 </body>
 </html>
