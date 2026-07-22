@@ -63,6 +63,8 @@ elif os.path.isfile(OPENAI_KEY_FILE):
         OPENAI_API_KEY = f.read().strip()
 else:
     OPENAI_API_KEY = ""
+AI_COOLDOWN_SECONDS = 60
+AI_DAILY_LIMIT = 15
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
 EMAIL_WIDTH = 480
@@ -84,7 +86,7 @@ GRADIENTS = {
     "fire": {"label": "אש", "colors": ["#f83600", "#f9d423"]},
     "forest": {"label": "יער", "colors": ["#134e5e", "#71b280"]},
     "wine": {"label": "יין", "colors": ["#c31432", "#240b36"]},
-    "steel": {"label": "פלדה", "colors": ["#757f9a", "#d7dde8"]},
+    "steel": {"label": "פלדה", "colors": ["#4b6478", "#28343f"]},
     "mint": {"label": "מנטה", "colors": ["#11998e", "#38ef7d"]},
     "cosmic": {"label": "קוסמי", "colors": ["#0f2027", "#2c5364"]},
 }
@@ -411,10 +413,12 @@ TONE_LABELS = {
 AI_SYSTEM_PROMPT = (
     "אתה קופירייטר מקצועי שכותב תוכן שיווקי לדפי נחיתה של עסקים קטנים ועצמאים בישראל.\n"
     "כתוב בעברית תקנית, בגוף ראשון (כאילו בעל העסק עצמו כותב), בטון שיצוין.\n"
-    "טקסט ה\"אודות\" - כ-3 עד 5 משפטים. כל תשובה בשאלות נפוצות - משפט עד שניים.\n"
+    "\"role\" - תואר/תפקיד קצר (2-5 מילים, למשל \"ליווי וייעוץ עסקי לעצמאים\").\n"
+    "\"tagline\" - משפט פתיחה קצר וקליט למסך הראשי (עד 10 מילים).\n"
+    "\"about\" - כ-3 עד 5 משפטים. כל תשובה בשאלות נפוצות - משפט עד שניים.\n"
     "אל תמציא פרטים שלא נמסרו לך (מספרי טלפון, מחירים, שמות אנשים, תעודות).\n"
     "החזר את התשובה בפורמט JSON בלבד, בדיוק לפי הסכמה הבאה, בלי שום טקסט נוסף מסביב:\n"
-    '{"about": "...", "faq": [{"q": "...", "a": "..."}, ...]}'
+    '{"role": "...", "tagline": "...", "about": "...", "faq": [{"q": "...", "a": "..."}, ...]}'
 )
 
 
@@ -431,11 +435,39 @@ def build_ai_prompt(answers):
         f"- שאלות שלקוחות שואלים הכי הרבה: {(answers.get('faq_source') or '').strip()}\n"
         f"- טון מבוקש: {tone_label}\n\n"
         "כתוב:\n"
-        "1. טקסט \"אודות\" קצר ומזמין לדף הנחיתה.\n"
-        "2. 4-5 שאלות נפוצות עם תשובות קצרות - מבוסס בעיקר על השאלות שהלקוחות באמת שואלים, "
+        "1. תואר/תפקיד קצר (role) ומשפט פתיחה קצר וקליט (tagline) למסך הראשי.\n"
+        "2. טקסט \"אודות\" קצר ומזמין לדף הנחיתה.\n"
+        "3. 4-5 שאלות נפוצות עם תשובות קצרות - מבוסס בעיקר על השאלות שהלקוחות באמת שואלים, "
         "אפשר להוסיף שאלה טבעית נוספת אם רלוונטי.\n\n"
         "החזר רק JSON בפורמט שצוין למעלה."
     )
+
+
+def _cleanup_orphaned_uploads(slug, site):
+    """Any uploaded file no longer referenced by the site's photo or block images
+    (removed in the editor, or replaced before ever being saved) is deleted here —
+    otherwise it just sits on disk forever, since uploads persist the instant
+    they're picked, well before the site's blocks are saved."""
+    site_dir = os.path.join(UPLOAD_DIR, slug)
+    if not os.path.isdir(site_dir):
+        return
+
+    referenced = set()
+    if site.get("photo"):
+        referenced.add(os.path.basename(site["photo"]))
+    for block in site.get("blocks", []):
+        if block["type"] == "gallery":
+            for url in block.get("images", []):
+                referenced.add(os.path.basename(url))
+        elif block["type"] == "image" and block.get("image"):
+            referenced.add(os.path.basename(block["image"]))
+
+    for filename in os.listdir(site_dir):
+        if filename not in referenced:
+            try:
+                os.remove(os.path.join(site_dir, filename))
+            except OSError:
+                app.logger.warning("failed to remove orphaned upload %s/%s", slug, filename)
 
 
 def _banner_base64():
@@ -802,17 +834,32 @@ def admin_save():
 
     sites[slug] = site
     save_sites(sites)
+    _cleanup_orphaned_uploads(slug, site)
     return jsonify({"ok": True, "site": site})
 
 
 @app.route("/lpapp/admin/api/generate-content", methods=["POST"])
 def admin_generate_content():
-    """Turns the fixed 8-question business questionnaire into an 'about' text
-    block and an FAQ block via OpenAI — client reviews before adding either."""
-    current_site_or_401()
+    """Turns the fixed 8-question business questionnaire into hero fields, an
+    'about' text block, and an FAQ block via OpenAI — client reviews before
+    adding any of it. Rate-limited per site since every call costs real money."""
+    slug, sites = current_site_or_401()
+    site = sites[slug]
 
     if not OPENAI_API_KEY:
         return jsonify({"ok": False, "error": "not_configured"}), 503
+
+    now = datetime.now()
+    last_at = site.get("ai_last_generated_at")
+    if last_at:
+        elapsed = (now - datetime.fromisoformat(last_at)).total_seconds()
+        if elapsed < AI_COOLDOWN_SECONDS:
+            return jsonify({"ok": False, "error": "cooldown", "retry_after": int(AI_COOLDOWN_SECONDS - elapsed)}), 429
+
+    today = now.strftime("%Y-%m-%d")
+    used_today = site.get("ai_generated_count", 0) if site.get("ai_generated_date") == today else 0
+    if used_today >= AI_DAILY_LIMIT:
+        return jsonify({"ok": False, "error": "daily_limit_reached"}), 429
 
     payload = request.get_json(force=True, silent=True) or {}
     answers = payload.get("answers") or {}
@@ -845,6 +892,8 @@ def admin_generate_content():
     try:
         content = r.json()["choices"][0]["message"]["content"]
         parsed = json.loads(content)
+        role = (parsed.get("role") or "").strip()
+        tagline = (parsed.get("tagline") or "").strip()
         about = (parsed.get("about") or "").strip()
         faq_items = []
         for it in parsed.get("faq", []):
@@ -856,7 +905,13 @@ def admin_generate_content():
         app.logger.exception("failed to parse OpenAI response for generate-content")
         return jsonify({"ok": False, "error": "parse_failed"}), 502
 
-    return jsonify({"ok": True, "about": about, "faq": faq_items})
+    site["ai_last_generated_at"] = now.isoformat()
+    site["ai_generated_date"] = today
+    site["ai_generated_count"] = used_today + 1
+    sites[slug] = site
+    save_sites(sites)
+
+    return jsonify({"ok": True, "role": role, "tagline": tagline, "about": about, "faq": faq_items})
 
 
 @app.route("/lpapp/admin/api/upload", methods=["POST"])

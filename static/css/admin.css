@@ -657,6 +657,30 @@ textarea {
 .ai-faq-review { display: flex; flex-direction: column; gap: 10px; }
 .ai-faq-review .subitem-row { margin-top: 0; }
 
+.ai-conflict {
+  margin-top: 10px;
+  background: var(--warning-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.ai-conflict label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warning-text);
+  margin-bottom: 6px;
+}
+.ai-conflict select {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
 .ai-error {
   background: var(--warning-bg);
   color: var(--warning-text);

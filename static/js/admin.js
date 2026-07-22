@@ -622,7 +622,9 @@ document.addEventListener('DOMContentLoaded', function () {
     not_configured: 'יצירת תוכן AI לא מוגדרת עדיין במערכת.',
     request_failed: 'לא הצלחנו להתחבר לשירות ה-AI. נסה/י שוב.',
     openai_error: 'שירות ה-AI החזיר שגיאה. נסה/י שוב בעוד רגע.',
-    parse_failed: 'התקבלה תשובה לא תקינה מה-AI. נסה/י שוב.'
+    parse_failed: 'התקבלה תשובה לא תקינה מה-AI. נסה/י שוב.',
+    cooldown: 'רגע לפני עוד ניסיון — אפשר ליצור תוכן שוב בעוד קצת.',
+    daily_limit_reached: 'הגעת למספר הפעמים המרבי ליצירת תוכן AI היום. נסה/י שוב מחר.'
   };
 
   var aiOverlay = document.getElementById('ai-overlay');
@@ -702,9 +704,13 @@ document.addEventListener('DOMContentLoaded', function () {
       '</div>';
   }
 
-  function renderAiError(errorCode) {
+  function renderAiError(errorCode, retryAfter) {
+    var message = AI_ERROR_MESSAGES[errorCode] || 'משהו השתבש, נסה/י שוב.';
+    if (errorCode === 'cooldown' && retryAfter) {
+      message = 'רגע לפני עוד ניסיון — אפשר ליצור תוכן שוב בעוד ' + retryAfter + ' שניות.';
+    }
     aiStepContainer.innerHTML =
-      '<div class="ai-error">' + (AI_ERROR_MESSAGES[errorCode] || 'משהו השתבש, נסה/י שוב.') + '</div>' +
+      '<div class="ai-error">' + message + '</div>' +
       '<div class="ai-actions">' +
         '<button class="btn btn-light" id="ai-error-close-btn" type="button">סגירה</button>' +
         '<button class="btn btn-primary" id="ai-error-retry-btn" type="button">ניסיון חוזר</button>' +
@@ -723,10 +729,10 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok) {
-          renderAiError(res.error);
+          renderAiError(res.error, res.retry_after);
           return;
         }
-        aiResult = { about: res.about, faq: res.faq };
+        aiResult = { role: res.role, tagline: res.tagline, about: res.about, faq: res.faq };
         renderAiReview();
       })
       .catch(function () {
@@ -745,16 +751,47 @@ document.addEventListener('DOMContentLoaded', function () {
       '</div>';
     }).join('');
 
+    var existingTextBlock = blockList.querySelector('.block-item[data-type="text"]');
+    var existingFaqBlock = blockList.querySelector('.block-item[data-type="faq"]');
+
+    var aboutConflictHtml = existingTextBlock ?
+      '<div class="ai-conflict">' +
+        '<label>כבר יש לך מקטע "טקסט חופשי" בדף</label>' +
+        '<select id="ai-about-conflict-mode">' +
+          '<option value="replace">להחליף את התוכן הקיים בזה</option>' +
+          '<option value="add">להוסיף כמקטע נוסף, בלי לגעת בקיים</option>' +
+        '</select>' +
+      '</div>' : '';
+
+    var faqConflictHtml = existingFaqBlock ?
+      '<div class="ai-conflict">' +
+        '<label>כבר יש לך מקטע "שאלות נפוצות" בדף</label>' +
+        '<select id="ai-faq-conflict-mode">' +
+          '<option value="replace">להחליף את התוכן הקיים בזה</option>' +
+          '<option value="add">להוסיף כמקטע נוסף, בלי לגעת בקיים</option>' +
+        '</select>' +
+      '</div>' : '';
+
     aiStepContainer.innerHTML =
       aiModalHeader('הנה מה שיצרתי') +
       '<p class="ai-modal-sub">אפשר לערוך כל דבר לפני שמוסיפים לדף.</p>' +
       '<div class="ai-review-block">' +
+        '<p class="ai-review-label">תפקיד (כותרת ראשית)</p>' +
+        '<input id="ai-review-role" type="text" value="' + escAttr(aiResult.role) + '">' +
+      '</div>' +
+      '<div class="ai-review-block">' +
+        '<p class="ai-review-label">משפט פתיחה</p>' +
+        '<input id="ai-review-tagline" type="text" value="' + escAttr(aiResult.tagline) + '">' +
+      '</div>' +
+      '<div class="ai-review-block">' +
         '<p class="ai-review-label">טקסט אודות</p>' +
         '<textarea id="ai-review-about" rows="4">' + escHtml(aiResult.about) + '</textarea>' +
+        aboutConflictHtml +
       '</div>' +
       '<div class="ai-review-block">' +
         '<p class="ai-review-label">שאלות נפוצות</p>' +
         '<div class="ai-faq-review" id="ai-faq-review">' + (faqRowsHtml || '<p class="hint">לא נוצרו שאלות.</p>') + '</div>' +
+        faqConflictHtml +
       '</div>' +
       '<div class="ai-actions">' +
         '<button class="btn btn-light" id="ai-review-cancel-btn" type="button">ביטול</button>' +
@@ -770,20 +807,60 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('ai-review-cancel-btn').addEventListener('click', closeAiModal);
     document.getElementById('ai-review-add-btn').addEventListener('click', function () {
+      var roleText = document.getElementById('ai-review-role').value.trim();
+      var taglineText = document.getElementById('ai-review-tagline').value.trim();
       var aboutText = document.getElementById('ai-review-about').value.trim();
       var faqItems = Array.prototype.map.call(faqReviewEl.querySelectorAll('.subitem-row'), function (row) {
         return { q: row.querySelector('.ai-review-q').value, a: row.querySelector('.ai-review-a').value };
       }).filter(function (it) { return it.q.trim() || it.a.trim(); });
 
+      if (roleText) document.getElementById('f-role').value = roleText;
+      if (taglineText) document.getElementById('f-tagline').value = taglineText;
+
+      var aboutMode = document.getElementById('ai-about-conflict-mode');
       if (aboutText) {
-        blockList.appendChild(createBlockElement('text', { title: 'קצת עליי', body: aboutText }, false));
+        if (existingTextBlock && (!aboutMode || aboutMode.value === 'replace')) {
+          replaceTextBlockContent(existingTextBlock, aboutText);
+        } else {
+          blockList.appendChild(createBlockElement('text', { title: 'קצת עליי', body: aboutText }, false));
+        }
       }
+
+      var faqMode = document.getElementById('ai-faq-conflict-mode');
       if (faqItems.length) {
-        blockList.appendChild(createBlockElement('faq', { title: 'שאלות נפוצות', items: faqItems }, false));
+        if (existingFaqBlock && (!faqMode || faqMode.value === 'replace')) {
+          replaceFaqBlockContent(existingFaqBlock, faqItems);
+        } else {
+          blockList.appendChild(createBlockElement('faq', { title: 'שאלות נפוצות', items: faqItems }, false));
+        }
       }
+
       markDirty();
       closeAiModal();
     });
+  }
+
+  function clearBlockIncomplete(blockEl) {
+    blockEl.classList.remove('incomplete');
+    var flash = blockEl.querySelector('.warn-flash');
+    if (flash) flash.remove();
+  }
+
+  function replaceTextBlockContent(blockEl, bodyText) {
+    var bodyField = blockEl.querySelector('.bf-body');
+    if (bodyField) bodyField.value = bodyText;
+    clearBlockIncomplete(blockEl);
+    blockEl.classList.add('open');
+  }
+
+  function replaceFaqBlockContent(blockEl, items) {
+    var list = blockEl.querySelector('.bf-items');
+    if (list) {
+      list.innerHTML = '';
+      items.forEach(function (it) { list.appendChild(makeFaqRow(it)); });
+    }
+    clearBlockIncomplete(blockEl);
+    blockEl.classList.add('open');
   }
 
   // ---- Save ----
