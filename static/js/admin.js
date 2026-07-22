@@ -602,6 +602,190 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // ---- AI content generation ----
+  var AI_QUESTIONS = [
+    { key: 'field', label: 'מה תחום העיסוק שלך?', placeholder: 'לדוגמה: ליווי וייעוץ עסקי לעצמאים', type: 'text' },
+    { key: 'years', label: 'כמה זמן אתה עוסק בתחום?', placeholder: 'לדוגמה: 12 שנה', type: 'text' },
+    { key: 'location', label: 'איפה העסק ממוקם, או באילו אזורים אתה נותן שירות?', placeholder: 'לדוגמה: תל אביב והמרכז', type: 'text' },
+    { key: 'unique', label: 'מה מייחד אותך מול מתחרים בתחום?', placeholder: 'לדוגמה: ליווי אישי צמוד, לא רק ייעוץ חד פעמי', type: 'text' },
+    { key: 'audience', label: 'מי קהל היעד שלך / מי הלקוחות הטיפוסיים שלך?', placeholder: 'לדוגמה: עצמאים ובעלי עסקים קטנים בתחילת הדרך', type: 'text' },
+    { key: 'services', label: 'אילו שירותים או מוצרים עיקריים אתה מציע?', placeholder: 'לדוגמה: ליווי הקמת עסק, תמחור, שיווק בסיסי', type: 'text' },
+    { key: 'faq_source', label: 'מה השאלות שהכי הרבה שואלים אותך לפני שמתחילים לעבוד איתך?', placeholder: 'לדוגמה: כמה זמן לוקח לראות תוצאות?', type: 'textarea' },
+    { key: 'tone', label: 'באיזה טון תרצה שהטקסט יישמע?', type: 'select', options: [
+      { value: 'formal', label: 'רשמי' },
+      { value: 'warm', label: 'חם ואישי' },
+      { value: 'energetic', label: 'אנרגטי ומלא מוטיבציה' }
+    ] }
+  ];
+
+  var AI_ERROR_MESSAGES = {
+    not_configured: 'יצירת תוכן AI לא מוגדרת עדיין במערכת.',
+    request_failed: 'לא הצלחנו להתחבר לשירות ה-AI. נסה/י שוב.',
+    openai_error: 'שירות ה-AI החזיר שגיאה. נסה/י שוב בעוד רגע.',
+    parse_failed: 'התקבלה תשובה לא תקינה מה-AI. נסה/י שוב.'
+  };
+
+  var aiOverlay = document.getElementById('ai-overlay');
+  var aiStepContainer = document.getElementById('ai-step-container');
+  var aiAnswers = {};
+  var aiStepIndex = 0;
+  var aiResult = null;
+
+  document.getElementById('ai-generate-btn').addEventListener('click', function () {
+    aiAnswers = {};
+    aiStepIndex = 0;
+    aiResult = null;
+    renderAiQuestion();
+    aiOverlay.classList.add('active');
+  });
+
+  function closeAiModal() {
+    aiOverlay.classList.remove('active');
+  }
+
+  function aiModalHeader(title) {
+    return '<p class="ai-modal-title">' +
+      '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/></svg>' +
+      title +
+      '</p>';
+  }
+
+  function renderAiQuestion() {
+    var q = AI_QUESTIONS[aiStepIndex];
+    var isFirst = aiStepIndex === 0;
+    var isLast = aiStepIndex === AI_QUESTIONS.length - 1;
+    var existing = aiAnswers[q.key] || '';
+    var fieldHtml;
+
+    if (q.type === 'select') {
+      fieldHtml = '<select id="ai-input">' + q.options.map(function (o) {
+        return '<option value="' + o.value + '"' + (o.value === existing ? ' selected' : '') + '>' + o.label + '</option>';
+      }).join('') + '</select>';
+    } else if (q.type === 'textarea') {
+      fieldHtml = '<textarea id="ai-input" rows="3" placeholder="' + (q.placeholder || '') + '">' + escHtml(existing) + '</textarea>';
+    } else {
+      fieldHtml = '<input id="ai-input" type="text" placeholder="' + (q.placeholder || '') + '" value="' + escAttr(existing) + '">';
+    }
+
+    aiStepContainer.innerHTML =
+      aiModalHeader('ספרי לי קצת על העסק') +
+      '<p class="ai-modal-sub">תשובות קצרות מספיקות — ה-AI ינסח בשבילך טקסט מוכן ל"אודות" ול"שאלות נפוצות".</p>' +
+      '<p class="ai-progress">שאלה ' + (aiStepIndex + 1) + ' מתוך ' + AI_QUESTIONS.length + '</p>' +
+      '<div class="ai-field"><label>' + q.label + '</label>' + fieldHtml + '</div>' +
+      '<div class="ai-actions">' +
+        '<button class="btn btn-light" id="ai-back-btn" type="button">' + (isFirst ? 'ביטול' : 'הקודם') + '</button>' +
+        '<button class="btn btn-primary" id="ai-next-btn" type="button">' + (isLast ? 'יצירת תוכן' : 'המשך') + '</button>' +
+      '</div>';
+
+    document.getElementById('ai-back-btn').addEventListener('click', function () {
+      if (isFirst) { closeAiModal(); return; }
+      aiAnswers[q.key] = document.getElementById('ai-input').value;
+      aiStepIndex--;
+      renderAiQuestion();
+    });
+    document.getElementById('ai-next-btn').addEventListener('click', function () {
+      aiAnswers[q.key] = document.getElementById('ai-input').value;
+      if (isLast) {
+        submitAiQuestionnaire();
+      } else {
+        aiStepIndex++;
+        renderAiQuestion();
+      }
+    });
+  }
+
+  function renderAiLoading() {
+    aiStepContainer.innerHTML =
+      '<div class="ai-loading">' +
+        '<div class="ai-loading-spinner"></div>' +
+        '<p>יוצר תוכן... זה יכול לקחת כמה שניות</p>' +
+      '</div>';
+  }
+
+  function renderAiError(errorCode) {
+    aiStepContainer.innerHTML =
+      '<div class="ai-error">' + (AI_ERROR_MESSAGES[errorCode] || 'משהו השתבש, נסה/י שוב.') + '</div>' +
+      '<div class="ai-actions">' +
+        '<button class="btn btn-light" id="ai-error-close-btn" type="button">סגירה</button>' +
+        '<button class="btn btn-primary" id="ai-error-retry-btn" type="button">ניסיון חוזר</button>' +
+      '</div>';
+    document.getElementById('ai-error-close-btn').addEventListener('click', closeAiModal);
+    document.getElementById('ai-error-retry-btn').addEventListener('click', submitAiQuestionnaire);
+  }
+
+  function submitAiQuestionnaire() {
+    renderAiLoading();
+    fetch('/lpapp/admin/api/generate-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: aiAnswers })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) {
+          renderAiError(res.error);
+          return;
+        }
+        aiResult = { about: res.about, faq: res.faq };
+        renderAiReview();
+      })
+      .catch(function () {
+        renderAiError('request_failed');
+      });
+  }
+
+  function renderAiReview() {
+    var faqRowsHtml = aiResult.faq.map(function (it) {
+      return '<div class="subitem-row">' +
+        '<div class="subitem-fields">' +
+          '<input class="ai-review-q" type="text" value="' + escAttr(it.q) + '">' +
+          '<input class="ai-review-a" type="text" value="' + escAttr(it.a) + '">' +
+        '</div>' +
+        '<button class="subitem-remove" type="button" title="הסרה"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="7" x2="19" y2="7"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M7 7l1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12"/></svg></button>' +
+      '</div>';
+    }).join('');
+
+    aiStepContainer.innerHTML =
+      aiModalHeader('הנה מה שיצרתי') +
+      '<p class="ai-modal-sub">אפשר לערוך כל דבר לפני שמוסיפים לדף.</p>' +
+      '<div class="ai-review-block">' +
+        '<p class="ai-review-label">טקסט אודות</p>' +
+        '<textarea id="ai-review-about" rows="4">' + escHtml(aiResult.about) + '</textarea>' +
+      '</div>' +
+      '<div class="ai-review-block">' +
+        '<p class="ai-review-label">שאלות נפוצות</p>' +
+        '<div class="ai-faq-review" id="ai-faq-review">' + (faqRowsHtml || '<p class="hint">לא נוצרו שאלות.</p>') + '</div>' +
+      '</div>' +
+      '<div class="ai-actions">' +
+        '<button class="btn btn-light" id="ai-review-cancel-btn" type="button">ביטול</button>' +
+        '<button class="btn btn-primary" id="ai-review-add-btn" type="button">הוספה לדף</button>' +
+      '</div>';
+
+    var faqReviewEl = document.getElementById('ai-faq-review');
+    faqReviewEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.subitem-remove');
+      if (!btn) return;
+      btn.closest('.subitem-row').remove();
+    });
+
+    document.getElementById('ai-review-cancel-btn').addEventListener('click', closeAiModal);
+    document.getElementById('ai-review-add-btn').addEventListener('click', function () {
+      var aboutText = document.getElementById('ai-review-about').value.trim();
+      var faqItems = Array.prototype.map.call(faqReviewEl.querySelectorAll('.subitem-row'), function (row) {
+        return { q: row.querySelector('.ai-review-q').value, a: row.querySelector('.ai-review-a').value };
+      }).filter(function (it) { return it.q.trim() || it.a.trim(); });
+
+      if (aboutText) {
+        blockList.appendChild(createBlockElement('text', { title: 'קצת עליי', body: aboutText }, false));
+      }
+      if (faqItems.length) {
+        blockList.appendChild(createBlockElement('faq', { title: 'שאלות נפוצות', items: faqItems }, false));
+      }
+      markDirty();
+      closeAiModal();
+    });
+  }
+
   // ---- Save ----
   document.getElementById('save-btn').addEventListener('click', function () {
     var payload = {

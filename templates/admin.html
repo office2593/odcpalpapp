@@ -66,7 +66,16 @@
 
   <section class="panel card" data-panel="content">
     <h2>מקטעי תוכן</h2>
-    <p class="hint" style="margin-bottom:16px;">הוסיפי כמה מקטעים שתרצי ובכל סדר — טקסט, תמונות, המלצות, שאלות נפוצות ועוד. מקטע שנשאר ריק פשוט לא יופיע בדף הציבורי.</p>
+    <div class="content-intro">
+      <p class="hint">הוסיפי כמה מקטעים שתרצי ובכל סדר — טקסט, תמונות, המלצות, שאלות נפוצות ועוד. מקטע שנשאר ריק פשוט לא יופיע בדף הציבורי.</p>
+      <button class="ai-btn" id="ai-generate-btn" type="button">
+        <svg class="sparkle" width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2.5l1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2-5.2-1.8 5.2-1.8z"/>
+          <path d="M19 15l0.8 2.2 2.2 0.8-2.2 0.8-0.8 2.2-0.8-2.2-2.2-0.8 2.2-0.8z"/>
+        </svg>
+        יצירת תוכן AI
+      </button>
+    </div>
 
     <div class="block-list" id="block-list"></div>
 
@@ -216,6 +225,12 @@
       <button class="btn btn-light" id="crop-cancel-btn" type="button">ביטול</button>
       <button class="btn btn-primary" id="crop-confirm-btn" type="button">אישור וחיתוך</button>
     </div>
+  </div>
+</div>
+
+<div class="crop-overlay" id="ai-overlay">
+  <div class="ai-modal">
+    <div class="ai-modal-body" id="ai-step-container"></div>
   </div>
 </div>
 

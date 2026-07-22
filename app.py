@@ -52,6 +52,17 @@ SENDGRID_FROM = os.environ.get("SENDGRID_FROM", "")
 TWILIO_SID = os.environ.get("TWILIO_SID", "")
 TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN", "")
 TWILIO_FROM = os.environ.get("TWILIO_FROM", "")
+# OpenAI for the "AI content" questionnaire — same env-var-first pattern as
+# SendGrid/Twilio, with a local gitignored file fallback for local dev (mirrors
+# how SECRET_KEY_FILE/SERVICE_ACCOUNT_FILE work).
+OPENAI_KEY_FILE = os.path.join(BASE_DIR, "openai_key.txt")
+if os.environ.get("OPENAI_API_KEY"):
+    OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+elif os.path.isfile(OPENAI_KEY_FILE):
+    with open(OPENAI_KEY_FILE, "r", encoding="utf-8") as f:
+        OPENAI_API_KEY = f.read().strip()
+else:
+    OPENAI_API_KEY = ""
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
 EMAIL_WIDTH = 480
@@ -389,6 +400,42 @@ def send_sms(to_phone, body):
     except Exception:
         app.logger.exception("send_sms failed")
         return False
+
+
+TONE_LABELS = {
+    "formal": "רשמי",
+    "warm": "חם ואישי",
+    "energetic": "אנרגטי ומלא מוטיבציה",
+}
+
+AI_SYSTEM_PROMPT = (
+    "אתה קופירייטר מקצועי שכותב תוכן שיווקי לדפי נחיתה של עסקים קטנים ועצמאים בישראל.\n"
+    "כתוב בעברית תקנית, בגוף ראשון (כאילו בעל העסק עצמו כותב), בטון שיצוין.\n"
+    "טקסט ה\"אודות\" - כ-3 עד 5 משפטים. כל תשובה בשאלות נפוצות - משפט עד שניים.\n"
+    "אל תמציא פרטים שלא נמסרו לך (מספרי טלפון, מחירים, שמות אנשים, תעודות).\n"
+    "החזר את התשובה בפורמט JSON בלבד, בדיוק לפי הסכמה הבאה, בלי שום טקסט נוסף מסביב:\n"
+    '{"about": "...", "faq": [{"q": "...", "a": "..."}, ...]}'
+)
+
+
+def build_ai_prompt(answers):
+    tone_label = TONE_LABELS.get(answers.get("tone"), "חם ואישי")
+    return (
+        "פרטי העסק:\n"
+        f"- תחום עיסוק: {(answers.get('field') or '').strip()}\n"
+        f"- ותק בתחום: {(answers.get('years') or '').strip()}\n"
+        f"- מיקום / אזור שירות: {(answers.get('location') or '').strip()}\n"
+        f"- מה מייחד את העסק: {(answers.get('unique') or '').strip()}\n"
+        f"- קהל יעד: {(answers.get('audience') or '').strip()}\n"
+        f"- שירותים עיקריים: {(answers.get('services') or '').strip()}\n"
+        f"- שאלות שלקוחות שואלים הכי הרבה: {(answers.get('faq_source') or '').strip()}\n"
+        f"- טון מבוקש: {tone_label}\n\n"
+        "כתוב:\n"
+        "1. טקסט \"אודות\" קצר ומזמין לדף הנחיתה.\n"
+        "2. 4-5 שאלות נפוצות עם תשובות קצרות - מבוסס בעיקר על השאלות שהלקוחות באמת שואלים, "
+        "אפשר להוסיף שאלה טבעית נוספת אם רלוונטי.\n\n"
+        "החזר רק JSON בפורמט שצוין למעלה."
+    )
 
 
 def _banner_base64():
@@ -756,6 +803,60 @@ def admin_save():
     sites[slug] = site
     save_sites(sites)
     return jsonify({"ok": True, "site": site})
+
+
+@app.route("/lpapp/admin/api/generate-content", methods=["POST"])
+def admin_generate_content():
+    """Turns the fixed 8-question business questionnaire into an 'about' text
+    block and an FAQ block via OpenAI — client reviews before adding either."""
+    current_site_or_401()
+
+    if not OPENAI_API_KEY:
+        return jsonify({"ok": False, "error": "not_configured"}), 503
+
+    payload = request.get_json(force=True, silent=True) or {}
+    answers = payload.get("answers") or {}
+    if not isinstance(answers, dict):
+        return jsonify({"ok": False, "error": "invalid_answers"}), 400
+
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json"},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": AI_SYSTEM_PROMPT},
+                    {"role": "user", "content": build_ai_prompt(answers)},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.7,
+            },
+            timeout=30,
+        )
+    except Exception:
+        app.logger.exception("generate-content request to OpenAI failed")
+        return jsonify({"ok": False, "error": "request_failed"}), 502
+
+    if r.status_code >= 400:
+        app.logger.error("OpenAI error %s: %s", r.status_code, r.text)
+        return jsonify({"ok": False, "error": "openai_error"}), 502
+
+    try:
+        content = r.json()["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        about = (parsed.get("about") or "").strip()
+        faq_items = []
+        for it in parsed.get("faq", []):
+            q = (it.get("q") or "").strip()
+            a = (it.get("a") or "").strip()
+            if q and a:
+                faq_items.append({"q": q, "a": a})
+    except Exception:
+        app.logger.exception("failed to parse OpenAI response for generate-content")
+        return jsonify({"ok": False, "error": "parse_failed"}), 502
+
+    return jsonify({"ok": True, "about": about, "faq": faq_items})
 
 
 @app.route("/lpapp/admin/api/upload", methods=["POST"])
