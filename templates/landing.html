@@ -34,27 +34,97 @@
 
 <main class="container">
 
-  <section class="glass-card about">
-    <h2>קצת עליי</h2>
-    <p>{{ site.about }}</p>
+  {% for block in blocks %}
+
+  {% if block.type == 'text' %}
+  <section class="glass-card block-text reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <p>{{ block.body }}</p>
   </section>
 
-  <section class="gallery">
-    <h2>רגעים מהעבודה</h2>
+  {% elif block.type == 'gallery' %}
+  <section class="gallery reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
     <div class="gallery-grid">
-      {% if site.gallery %}
-        {% for img in site.gallery %}
-        <div class="gallery-tile"><img src="{{ img }}" alt=""></div>
-        {% endfor %}
-      {% else %}
-        {% for i in range(4) %}
-        <div class="gallery-tile">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-4 4-3-3-6 6"/></svg>
-        </div>
-        {% endfor %}
-      {% endif %}
+      {% for img in block.images %}
+      <div class="gallery-tile"><img src="{{ img }}" alt=""></div>
+      {% endfor %}
     </div>
   </section>
+
+  {% elif block.type == 'testimonials' %}
+  <section class="testimonials reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <div class="testimonials-grid">
+      {% for it in block['items'] %}
+      {% if it.quote %}
+      <div class="glass-card testimonial-card">
+        <p class="testimonial-quote">&ldquo;{{ it.quote }}&rdquo;</p>
+        {% if it.name %}<p class="testimonial-name">{{ it.name }}</p>{% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  {% elif block.type == 'faq' %}
+  <section class="faq reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <div class="glass-card faq-card">
+      {% for it in block['items'] %}
+      <details class="faq-row">
+        <summary>{{ it.q }}</summary>
+        <p>{{ it.a }}</p>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% elif block.type == 'video' %}
+  <section class="video-block reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <div class="video-frame">
+      <iframe src="{{ block.embed_src }}" title="{{ block.title or 'וידאו' }}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+  </section>
+
+  {% elif block.type == 'social' %}
+  <section class="social-block reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <div class="social-links">
+      {% for link in block.links %}
+      {% if link.url %}
+      <a class="glass-card social-link" href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label or link.url }}</a>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  {% elif block.type == 'map' %}
+  <section class="map-block reveal">
+    {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+    <div class="map-frame">
+      <iframe src="{{ block.embed_src }}" title="{{ block.title or 'מפה' }}" frameborder="0"></iframe>
+    </div>
+  </section>
+
+  {% elif block.type == 'cta' %}
+  <section class="glass-card block-cta reveal">
+    <a class="btn btn-solid" href="{{ block.url }}" target="_blank" rel="noopener">{{ block.label }}</a>
+  </section>
+
+  {% elif block.type == 'image' %}
+  <section class="block-image reveal">
+    <img src="{{ block.image }}" alt="">
+  </section>
+
+  {% elif block.type == 'custom' %}
+  <section class="block-custom reveal">
+    {{ block.html | safe }}
+  </section>
+  {% endif %}
+
+  {% endfor %}
 
   <section class="contact">
     <h2>בואו נדבר</h2>

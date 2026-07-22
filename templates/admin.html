@@ -35,7 +35,7 @@
 
   <div class="tabs" role="tablist">
     <button class="tab active" type="button" data-tab="main">תוכן ראשי</button>
-    <button class="tab" type="button" data-tab="about">אודות</button>
+    <button class="tab" type="button" data-tab="content">תוכן</button>
     <button class="tab" type="button" data-tab="photos">תמונות</button>
     <button class="tab" type="button" data-tab="design">עיצוב</button>
     <button class="tab" type="button" data-tab="contact">פרטי קשר</button>
@@ -51,11 +51,72 @@
     <input id="f-tagline" type="text" value="{{ site.tagline }}">
   </section>
 
-  <section class="panel card" data-panel="about">
-    <h2>קצת עליי</h2>
-    <label for="f-about">טקסט אודות</label>
-    <textarea id="f-about" rows="6">{{ site.about }}</textarea>
+  <section class="panel card" data-panel="content">
+    <h2>מקטעי תוכן</h2>
+    <p class="hint" style="margin-bottom:16px;">הוסיפי כמה מקטעים שתרצי ובכל סדר — טקסט, תמונות, המלצות, שאלות נפוצות ועוד. מקטע שנשאר ריק פשוט לא יופיע בדף הציבורי.</p>
+
+    <div class="block-list" id="block-list"></div>
+
+    <button class="add-block-btn" id="add-block-btn" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      הוספת מקטע חדש
+    </button>
+
+    <div class="type-picker" id="type-picker">
+      <div class="type-card" data-type="text">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="7" x2="19" y2="7"/><line x1="5" y1="12" x2="16" y2="12"/><line x1="5" y1="17" x2="12" y2="17"/></svg></span>
+        <span class="t-label">טקסט חופשי</span>
+        <span class="t-desc">כותרת + פסקה</span>
+      </div>
+      <div class="type-card" data-type="gallery">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="7.5" cy="9.5" r="1.3"/><path d="M4 16l4-4 3 3 4-5 3.5 4"/></svg></span>
+        <span class="t-label">גלריית תמונות</span>
+        <span class="t-desc">רשת תמונות</span>
+      </div>
+      <div class="type-card" data-type="testimonials">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h4v3c0 2-1.3 3.3-3.3 3.7"/><path d="M14 8h4v3c0 2-1.3 3.3-3.3 3.7"/></svg></span>
+        <span class="t-label">המלצות</span>
+        <span class="t-desc">ציטוטים ושמות</span>
+      </div>
+      <div class="type-card" data-type="faq">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><text x="10" y="14" font-size="9" text-anchor="middle" fill="currentColor" stroke="none" font-family="Arial">?</text></svg></span>
+        <span class="t-label">שאלות נפוצות</span>
+        <span class="t-desc">רשימת שאלות ותשובות</span>
+      </div>
+      <div class="type-card" data-type="video">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><polygon points="8.3 6.8 13.5 10 8.3 13.2" fill="currentColor" stroke="none"/></svg></span>
+        <span class="t-label">וידאו</span>
+        <span class="t-desc">הטמעת YouTube / Vimeo</span>
+      </div>
+      <div class="type-card" data-type="social">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><ellipse cx="10" cy="10" rx="3" ry="7"/><line x1="3" y1="10" x2="17" y2="10"/></svg></span>
+        <span class="t-label">רשתות חברתיות</span>
+        <span class="t-desc">קישורים עם אייקונים</span>
+      </div>
+      <div class="type-card" data-type="map">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3a5.5 5.5 0 0 1 5.5 5.5c0 4.2-5.5 9.5-5.5 9.5S4.5 12.7 4.5 8.5A5.5 5.5 0 0 1 10 3z"/><circle cx="10" cy="8.5" r="1.8"/></svg></span>
+        <span class="t-label">מפה ומיקום</span>
+        <span class="t-desc">כתובת + מפה מוטמעת</span>
+      </div>
+      <div class="type-card" data-type="cta">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="14" height="6" rx="3"/><path d="M13 10h3M14.5 8.5L16 10l-1.5 1.5"/></svg></span>
+        <span class="t-label">כפתור פעולה</span>
+        <span class="t-desc">קישור לתיאום / הרשמה</span>
+      </div>
+      <div class="type-card" data-type="image">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="7.5" cy="9.5" r="1.3"/><path d="M4 16l4-4 3 3 4-5 3.5 4"/></svg></span>
+        <span class="t-label">תמונה / באנר</span>
+        <span class="t-desc">תמונה רחבה בודדת</span>
+      </div>
+      <div class="type-card" data-type="custom">
+        <span class="block-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 3 10 8 14"/><polyline points="12 6 17 10 12 14"/></svg></span>
+        <span class="t-label">הטמעה מותאמת</span>
+        <span class="t-desc">לשימוש מתקדם</span>
+      </div>
+    </div>
   </section>
+
+  <script id="blocks-data" type="application/json">{{ site.blocks | tojson }}</script>
 
   <section class="panel card" data-panel="photos">
     <h2>תמונת פרופיל</h2>
@@ -74,21 +135,6 @@
       </div>
     </div>
     <input type="file" id="avatar-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-
-    <h2 class="gallery-heading">גלריית תמונות</h2>
-    <div class="gallery-grid" id="gallery-grid">
-      {% for img in site.gallery %}
-      <div class="gallery-tile">
-        <img src="{{ img }}" alt="">
-        <button class="tile-remove" type="button" data-url="{{ img }}" aria-label="הסרת תמונה">&times;</button>
-      </div>
-      {% endfor %}
-      <div class="gallery-tile add-tile" id="gallery-add-tile">
-        <span>+</span>
-        <span class="hint">הוספת תמונה</span>
-      </div>
-    </div>
-    <input type="file" id="gallery-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
   </section>
 
   <section class="panel card" data-panel="design">

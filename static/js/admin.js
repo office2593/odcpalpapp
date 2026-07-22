@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // ---- Text fields ----
-  ['f-name', 'f-role', 'f-tagline', 'f-about', 'f-email', 'f-phone', 'f-whatsapp'].forEach(function (id) {
+  ['f-name', 'f-role', 'f-tagline', 'f-email', 'f-phone', 'f-whatsapp'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('input', markDirty);
   });
@@ -212,38 +212,361 @@ document.addEventListener('DOMContentLoaded', function () {
     avatarTile.innerHTML = '<span class="avatar-placeholder">&#128100;</span>';
   });
 
-  // Gallery
-  var galleryGrid = document.getElementById('gallery-grid');
-  var galleryAddTile = document.getElementById('gallery-add-tile');
-  var galleryFile = document.getElementById('gallery-file');
+  // ---- Content blocks ----
+  var TYPE_META = {};
+  document.querySelectorAll('#type-picker .type-card').forEach(function (card) {
+    TYPE_META[card.dataset.type] = {
+      icon: card.querySelector('.block-icon').innerHTML,
+      label: card.querySelector('.t-label').textContent
+    };
+  });
 
-  galleryAddTile.addEventListener('click', function () { galleryFile.click(); });
-  galleryFile.addEventListener('change', function () {
-    if (!galleryFile.files.length) return;
-    var file = galleryFile.files[0];
-    galleryFile.value = '';
-    openCropModal(file, {
-      field: 'gallery',
-      getTileEl: function () {
-        var tile = document.createElement('div');
-        tile.className = 'gallery-tile';
-        galleryGrid.insertBefore(tile, galleryAddTile);
-        return tile;
-      },
-      onDone: function (url, tileEl) {
-        tileEl.innerHTML =
-          '<img src="' + url + '" alt="">' +
-          '<button class="tile-remove" type="button" data-url="' + url + '" aria-label="הסרת תמונה">&times;</button>';
-      }
+  var DEFAULT_BLOCK_DATA = {
+    text: { title: '', body: '' },
+    gallery: { title: '', images: [] },
+    testimonials: { title: '', items: [] },
+    faq: { title: '', items: [] },
+    video: { title: '', url: '' },
+    social: { title: '', links: [] },
+    map: { title: '', address: '' },
+    cta: { label: '', url: '' },
+    image: { image: null },
+    custom: { html: '' }
+  };
+
+  function makeId() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'b' + Date.now() + Math.random().toString(16).slice(2);
+  }
+
+  function isBlockIncomplete(type, data) {
+    if (type === 'text') return !(data.body || '').trim();
+    if (type === 'gallery') return !(data.images && data.images.length);
+    if (type === 'testimonials') return !(data.items || []).some(function (it) { return (it.quote || '').trim(); });
+    if (type === 'faq') return !(data.items || []).some(function (it) { return (it.q || '').trim() && (it.a || '').trim(); });
+    if (type === 'video') return !(data.url || '').trim();
+    if (type === 'social') return !(data.links || []).some(function (it) { return (it.url || '').trim(); });
+    if (type === 'map') return !(data.address || '').trim();
+    if (type === 'cta') return !((data.label || '').trim() && (data.url || '').trim());
+    if (type === 'image') return !data.image;
+    if (type === 'custom') return !(data.html || '').trim();
+    return false;
+  }
+
+  function blockDisplayName(type, data) {
+    if (type === 'cta') return (data.label || '').trim() || '(אין טקסט לכפתור עדיין)';
+    if (type === 'image') return 'תמונה / באנר';
+    if (type === 'custom') return 'הטמעה מותאמת';
+    return (data.title || '').trim() || '(אין כותרת עדיין)';
+  }
+
+  function makeSubitemRow(fieldsHtml) {
+    var row = document.createElement('div');
+    row.className = 'subitem-row';
+    row.innerHTML =
+      '<div class="subitem-fields">' + fieldsHtml + '</div>' +
+      '<button class="subitem-remove" type="button" title="הסרה">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="7" x2="19" y2="7"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M7 7l1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12"/></svg>' +
+      '</button>';
+    row.querySelector('.subitem-remove').addEventListener('click', function () {
+      row.remove();
+      markDirty();
     });
+    row.querySelectorAll('input, textarea').forEach(function (el) { el.addEventListener('input', markDirty); });
+    return row;
+  }
+
+  function buildBlockBody(bodyEl, type, data, blockEl) {
+    if (type === 'text') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<label>תוכן</label><textarea class="bf-body" rows="4" placeholder="כתבי כאן את תוכן המקטע...">' + escHtml(data.body) + '</textarea>';
+    } else if (type === 'gallery') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<div class="gallery-grid bf-gallery-grid" style="margin-top:12px;"></div>' +
+        '<input type="file" class="bf-gallery-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>';
+      var grid = bodyEl.querySelector('.bf-gallery-grid');
+      (data.images || []).forEach(function (url) { grid.appendChild(makeGalleryTile(url)); });
+      var addTile = document.createElement('div');
+      addTile.className = 'gallery-tile add-tile';
+      addTile.innerHTML = '<span>+</span><span class="hint">הוספת תמונה</span>';
+      grid.appendChild(addTile);
+      var fileInput = bodyEl.querySelector('.bf-gallery-file');
+      addTile.addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function () {
+        if (!fileInput.files.length) return;
+        var tile = makeGalleryTile(null);
+        grid.insertBefore(tile, addTile);
+        setTileLoading(tile, true);
+        uploadImage('block_image', fileInput.files[0], tile, function (url) {
+          tile.dataset.url = url;
+          tile.innerHTML = '<img src="' + url + '" alt="">' +
+            '<button class="tile-remove" type="button" aria-label="הסרת תמונה">&times;</button>';
+          markDirty();
+        });
+        fileInput.value = '';
+      });
+      grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('.tile-remove');
+        if (!btn) return;
+        btn.closest('.gallery-tile').remove();
+        markDirty();
+      });
+    } else if (type === 'testimonials') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<div class="subitem-list bf-items"></div>' +
+        '<button class="subitem-add-btn" type="button">+ הוספת המלצה</button>';
+      var list = bodyEl.querySelector('.bf-items');
+      (data.items && data.items.length ? data.items : []).forEach(function (it) { list.appendChild(makeTestimonialRow(it)); });
+      bodyEl.querySelector('.subitem-add-btn').addEventListener('click', function () {
+        list.appendChild(makeTestimonialRow({ name: '', quote: '' }));
+        markDirty();
+      });
+    } else if (type === 'faq') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<div class="subitem-list bf-items"></div>' +
+        '<button class="subitem-add-btn" type="button">+ הוספת שאלה</button>';
+      var flist = bodyEl.querySelector('.bf-items');
+      (data.items && data.items.length ? data.items : []).forEach(function (it) { flist.appendChild(makeFaqRow(it)); });
+      bodyEl.querySelector('.subitem-add-btn').addEventListener('click', function () {
+        flist.appendChild(makeFaqRow({ q: '', a: '' }));
+        markDirty();
+      });
+    } else if (type === 'video') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<label>קישור לוידאו</label><input class="bf-url" type="text" placeholder="קישור מ-YouTube או Vimeo" value="' + escAttr(data.url) + '">';
+    } else if (type === 'social') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<div class="subitem-list bf-items"></div>' +
+        '<button class="subitem-add-btn" type="button">+ הוספת קישור</button>';
+      var slist = bodyEl.querySelector('.bf-items');
+      (data.links && data.links.length ? data.links : []).forEach(function (it) { slist.appendChild(makeSocialRow(it)); });
+      bodyEl.querySelector('.subitem-add-btn').addEventListener('click', function () {
+        slist.appendChild(makeSocialRow({ label: '', url: '' }));
+        markDirty();
+      });
+    } else if (type === 'map') {
+      bodyEl.innerHTML =
+        '<label>כותרת המקטע (לא חובה)</label><input class="bf-title" type="text" value="' + escAttr(data.title) + '">' +
+        '<label>כתובת</label><input class="bf-address" type="text" placeholder="לדוגמה: רוטשילד 1, תל אביב" value="' + escAttr(data.address) + '">';
+    } else if (type === 'cta') {
+      bodyEl.innerHTML =
+        '<label>טקסט הכפתור</label><input class="bf-label" type="text" placeholder="לדוגמה: קביעת פגישה" value="' + escAttr(data.label) + '">' +
+        '<label>קישור</label><input class="bf-url" type="text" placeholder="כתובת אינטרנט או wa.me/..." value="' + escAttr(data.url) + '">';
+    } else if (type === 'image') {
+      bodyEl.innerHTML =
+        '<div class="block-image-preview bf-image-preview"></div>' +
+        '<input type="file" class="bf-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>';
+      var preview = bodyEl.querySelector('.bf-image-preview');
+      renderImagePreview(preview, data.image);
+      var imgFile = bodyEl.querySelector('.bf-image-file');
+      preview.addEventListener('click', function () { imgFile.click(); });
+      imgFile.addEventListener('change', function () {
+        if (!imgFile.files.length) return;
+        setTileLoading(preview, true);
+        uploadImage('block_image', imgFile.files[0], preview, function (url) {
+          preview.dataset.url = url;
+          renderImagePreview(preview, url);
+          markDirty();
+        });
+        imgFile.value = '';
+      });
+    } else if (type === 'custom') {
+      bodyEl.innerHTML =
+        '<div class="hint warning">' +
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><circle cx="12" cy="16.3" r="0.6" fill="currentColor"/></svg>' +
+          '<span>מקטע זה מריץ את הקוד כפי שהוא בעמוד שלך. יש להשתמש רק בקוד ממקור מהימן.</span>' +
+        '</div>' +
+        '<label>קוד HTML</label><textarea class="bf-html" rows="5" placeholder="&lt;iframe ...&gt;">' + escHtml(data.html) + '</textarea>';
+    }
+
+    bodyEl.querySelectorAll('.bf-title, .bf-body, .bf-url, .bf-address, .bf-label, .bf-html').forEach(function (el) {
+      el.addEventListener('input', markDirty);
+    });
+    var titleEl = bodyEl.querySelector('.bf-title') || bodyEl.querySelector('.bf-label');
+    if (titleEl) {
+      titleEl.addEventListener('input', function () {
+        blockEl.querySelector('.block-name').textContent = blockDisplayName(type, { title: titleEl.value, label: titleEl.value });
+      });
+    }
+  }
+
+  function renderImagePreview(el, url) {
+    el.dataset.url = url || '';
+    if (url) {
+      el.innerHTML = '<img src="' + url + '" alt="">';
+    } else {
+      el.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+    }
+  }
+
+  function makeGalleryTile(url) {
+    var tile = document.createElement('div');
+    tile.className = 'gallery-tile';
+    if (url) {
+      tile.dataset.url = url;
+      tile.innerHTML = '<img src="' + url + '" alt="">' +
+        '<button class="tile-remove" type="button" aria-label="הסרת תמונה">&times;</button>';
+    }
+    return tile;
+  }
+
+  function makeTestimonialRow(it) {
+    var row = makeSubitemRow(
+      '<input class="si-name" type="text" placeholder="שם" value="' + escAttr(it.name) + '">' +
+      '<input class="si-quote" type="text" placeholder="ציטוט" value="' + escAttr(it.quote) + '">'
+    );
+    return row;
+  }
+
+  function makeFaqRow(it) {
+    return makeSubitemRow(
+      '<input class="si-q" type="text" placeholder="שאלה" value="' + escAttr(it.q) + '">' +
+      '<textarea class="si-a" rows="2" placeholder="תשובה">' + escHtml(it.a) + '</textarea>'
+    );
+  }
+
+  function makeSocialRow(it) {
+    return makeSubitemRow(
+      '<input class="si-label" type="text" placeholder="שם הרשת (לדוגמה: אינסטגרם)" value="' + escAttr(it.label) + '">' +
+      '<input class="si-url" type="text" placeholder="קישור" value="' + escAttr(it.url) + '">'
+    );
+  }
+
+  function escAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function createBlockElement(type, data, open) {
+    var meta = TYPE_META[type];
+    var el = document.createElement('div');
+    el.className = 'block-item' + (open ? ' open' : '');
+    el.dataset.type = type;
+    el.dataset.id = data.id || makeId();
+    if (isBlockIncomplete(type, data)) el.classList.add('incomplete');
+
+    var head = document.createElement('div');
+    head.className = 'block-head';
+    head.innerHTML =
+      '<span class="drag-handle"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>' +
+      '<span class="block-icon">' + meta.icon + '</span>' +
+      '<span class="block-titles"><span class="block-type">' + meta.label + '</span><span class="block-name">' + blockDisplayName(type, data) + '</span></span>' +
+      (isBlockIncomplete(type, data) ? '<span class="warn-flash">לא יוצג בדף</span>' : '') +
+      '<button class="block-delete" type="button" title="מחיקת מקטע"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="7" x2="19" y2="7"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M7 7l1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12"/></svg></button>' +
+      '<span class="block-chevron"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>';
+
+    var body = document.createElement('div');
+    body.className = 'block-body';
+    buildBlockBody(body, type, data, el);
+
+    el.appendChild(head);
+    el.appendChild(body);
+    el.draggable = true;
+
+    head.addEventListener('click', function (e) {
+      if (e.target.closest('.block-delete')) return;
+      el.classList.toggle('open');
+    });
+    head.querySelector('.block-delete').addEventListener('click', function () {
+      el.remove();
+      markDirty();
+    });
+
+    return el;
+  }
+
+  var blockList = document.getElementById('block-list');
+  var blocksDataEl = document.getElementById('blocks-data');
+  var initialBlocks = blocksDataEl ? (JSON.parse(blocksDataEl.textContent || '[]') || []) : [];
+  initialBlocks.forEach(function (b) { blockList.appendChild(createBlockElement(b.type, b, false)); });
+
+  var addBlockBtn = document.getElementById('add-block-btn');
+  var typePicker = document.getElementById('type-picker');
+  addBlockBtn.addEventListener('click', function () {
+    typePicker.classList.toggle('open');
+  });
+  typePicker.addEventListener('click', function (e) {
+    var card = e.target.closest('.type-card');
+    if (!card) return;
+    var type = card.dataset.type;
+    var el = createBlockElement(type, Object.assign({}, DEFAULT_BLOCK_DATA[type]), true);
+    blockList.appendChild(el);
+    typePicker.classList.remove('open');
+    markDirty();
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
-  galleryGrid.addEventListener('click', function (e) {
-    var btn = e.target.closest('.tile-remove');
-    if (!btn) return;
-    var tile = btn.closest('.gallery-tile');
-    removeImage(btn.dataset.url, tile);
+  // drag & drop reordering
+  var draggedBlock = null;
+  blockList.addEventListener('dragstart', function (e) {
+    var item = e.target.closest('.block-item');
+    if (!item) return;
+    draggedBlock = item;
+    item.classList.add('dragging');
   });
+  blockList.addEventListener('dragend', function () {
+    if (draggedBlock) draggedBlock.classList.remove('dragging');
+    draggedBlock = null;
+    markDirty();
+  });
+  blockList.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    var over = e.target.closest('.block-item');
+    if (!over || over === draggedBlock || !draggedBlock) return;
+    var rect = over.getBoundingClientRect();
+    var before = (e.clientY - rect.top) < rect.height / 2;
+    blockList.insertBefore(draggedBlock, before ? over : over.nextSibling);
+  });
+
+  function serializeBlocks() {
+    return Array.prototype.map.call(blockList.querySelectorAll('.block-item'), function (el) {
+      var type = el.dataset.type;
+      var block = { id: el.dataset.id, type: type };
+      var q = function (sel) { return el.querySelector(sel); };
+      var val = function (sel) { var f = q(sel); return f ? f.value : ''; };
+
+      if (type === 'text') {
+        block.title = val('.bf-title'); block.body = val('.bf-body');
+      } else if (type === 'gallery') {
+        block.title = val('.bf-title');
+        block.images = Array.prototype.map.call(el.querySelectorAll('.bf-gallery-grid .gallery-tile:not(.add-tile)'), function (t) { return t.dataset.url; }).filter(Boolean);
+      } else if (type === 'testimonials') {
+        block.title = val('.bf-title');
+        block.items = Array.prototype.map.call(el.querySelectorAll('.bf-items .subitem-row'), function (row) {
+          return { name: row.querySelector('.si-name').value, quote: row.querySelector('.si-quote').value };
+        });
+      } else if (type === 'faq') {
+        block.title = val('.bf-title');
+        block.items = Array.prototype.map.call(el.querySelectorAll('.bf-items .subitem-row'), function (row) {
+          return { q: row.querySelector('.si-q').value, a: row.querySelector('.si-a').value };
+        });
+      } else if (type === 'video') {
+        block.title = val('.bf-title'); block.url = val('.bf-url');
+      } else if (type === 'social') {
+        block.title = val('.bf-title');
+        block.links = Array.prototype.map.call(el.querySelectorAll('.bf-items .subitem-row'), function (row) {
+          return { label: row.querySelector('.si-label').value, url: row.querySelector('.si-url').value };
+        });
+      } else if (type === 'map') {
+        block.title = val('.bf-title'); block.address = val('.bf-address');
+      } else if (type === 'cta') {
+        block.label = val('.bf-label'); block.url = val('.bf-url');
+      } else if (type === 'image') {
+        var preview = q('.bf-image-preview');
+        block.image = preview ? (preview.dataset.url || null) : null;
+      } else if (type === 'custom') {
+        block.html = val('.bf-html');
+      }
+      return block;
+    });
+  }
 
   // ---- Save ----
   document.getElementById('save-btn').addEventListener('click', function () {
@@ -251,14 +574,14 @@ document.addEventListener('DOMContentLoaded', function () {
       name: document.getElementById('f-name').value,
       role: document.getElementById('f-role').value,
       tagline: document.getElementById('f-tagline').value,
-      about: document.getElementById('f-about').value,
       theme: selectedTheme,
       photo_layout: selectedLayout,
       contact: {
         email: document.getElementById('f-email').value,
         phone: document.getElementById('f-phone').value,
         whatsapp: document.getElementById('f-whatsapp').value
-      }
+      },
+      blocks: serializeBlocks()
     };
 
     fetch('/lpapp/admin/api/save', {

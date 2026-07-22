@@ -8,6 +8,7 @@ import secrets
 import shutil
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import quote as urlquote
 
 import firebase_admin
 import requests
@@ -73,6 +74,150 @@ GRADIENTS = {
 
 PHOTO_LAYOUTS = {"center", "split", "cover"}
 
+BLOCK_TYPES = {"text", "gallery", "testimonials", "faq", "video", "social", "map", "cta", "image", "custom"}
+
+
+def normalize_link_url(url):
+    """Client rarely types a scheme — treat a bare 'example.com' as https://example.com,
+    but leave anything that already has one (http:, mailto:, tel:, https:) untouched."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url):
+        return url
+    return "https://" + url
+
+
+def sanitize_block(raw):
+    """Rebuilds a block from client-submitted JSON field-by-field (never trusts it
+    verbatim) so an unknown type or stray key can't end up persisted in sites.json."""
+    if not isinstance(raw, dict):
+        return None
+    btype = raw.get("type")
+    if btype not in BLOCK_TYPES:
+        return None
+    block_id = raw.get("id") if isinstance(raw.get("id"), str) and raw.get("id") else uuid.uuid4().hex
+
+    if btype == "text":
+        return {
+            "id": block_id, "type": "text",
+            "title": (raw.get("title") or "").strip(),
+            "body": (raw.get("body") or "").strip(),
+        }
+    if btype == "gallery":
+        images = [u.strip() for u in (raw.get("images") or []) if isinstance(u, str) and u.strip()]
+        return {"id": block_id, "type": "gallery", "title": (raw.get("title") or "").strip(), "images": images}
+    if btype == "testimonials":
+        items = []
+        for it in (raw.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            name = (it.get("name") or "").strip()
+            quote = (it.get("quote") or "").strip()
+            if name or quote:
+                items.append({"name": name, "quote": quote})
+        return {"id": block_id, "type": "testimonials", "title": (raw.get("title") or "").strip(), "items": items}
+    if btype == "faq":
+        items = []
+        for it in (raw.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            q = (it.get("q") or "").strip()
+            a = (it.get("a") or "").strip()
+            if q or a:
+                items.append({"q": q, "a": a})
+        return {"id": block_id, "type": "faq", "title": (raw.get("title") or "").strip(), "items": items}
+    if btype == "video":
+        return {"id": block_id, "type": "video", "title": (raw.get("title") or "").strip(), "url": (raw.get("url") or "").strip()}
+    if btype == "social":
+        links = []
+        for it in (raw.get("links") or []):
+            if not isinstance(it, dict):
+                continue
+            label = (it.get("label") or "").strip()
+            url = normalize_link_url(it.get("url"))
+            if label or url:
+                links.append({"label": label, "url": url})
+        return {"id": block_id, "type": "social", "title": (raw.get("title") or "").strip(), "links": links}
+    if btype == "map":
+        return {"id": block_id, "type": "map", "title": (raw.get("title") or "").strip(), "address": (raw.get("address") or "").strip()}
+    if btype == "cta":
+        return {
+            "id": block_id, "type": "cta",
+            "label": (raw.get("label") or "").strip(),
+            "url": normalize_link_url(raw.get("url")),
+        }
+    if btype == "image":
+        image = (raw.get("image") or "").strip()
+        return {"id": block_id, "type": "image", "image": image or None}
+    if btype == "custom":
+        return {"id": block_id, "type": "custom", "html": raw.get("html") or ""}
+    return None
+
+
+def video_embed_src(url):
+    url = (url or "").strip()
+    if not url:
+        return None
+    yt = re.search(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/|shorts/))([\w-]{6,})", url)
+    if yt:
+        return f"https://www.youtube.com/embed/{yt.group(1)}"
+    vimeo = re.search(r"vimeo\.com/(?:video/)?(\d+)", url)
+    if vimeo:
+        return f"https://player.vimeo.com/video/{vimeo.group(1)}"
+    return None
+
+
+def map_embed_src(address):
+    address = (address or "").strip()
+    if not address:
+        return None
+    return f"https://www.google.com/maps?q={urlquote(address)}&output=embed"
+
+
+def block_is_visible(block):
+    """A block with no real content simply doesn't render on the public page —
+    clients never see an empty section or a broken-looking gap."""
+    t = block.get("type")
+    if t == "text":
+        return bool((block.get("body") or "").strip())
+    if t == "gallery":
+        return bool(block.get("images"))
+    if t == "testimonials":
+        return any((it.get("quote") or "").strip() for it in block.get("items", []))
+    if t == "faq":
+        return any((it.get("q") or "").strip() and (it.get("a") or "").strip() for it in block.get("items", []))
+    if t == "video":
+        return bool(video_embed_src(block.get("url")))
+    if t == "social":
+        return any((it.get("url") or "").strip() for it in block.get("links", []))
+    if t == "map":
+        return bool((block.get("address") or "").strip())
+    if t == "cta":
+        return bool((block.get("label") or "").strip() and (block.get("url") or "").strip())
+    if t == "image":
+        return bool(block.get("image"))
+    if t == "custom":
+        return bool((block.get("html") or "").strip())
+    return False
+
+
+def _migrate_site_to_blocks(site):
+    """One-time upgrade for sites created before the modular content-blocks system:
+    folds the old fixed 'about' text and 'gallery' images into equivalent blocks so
+    nothing already written by a client is lost. Returns True if it changed anything."""
+    if "blocks" in site:
+        return False
+    blocks = []
+    about_text = (site.get("about") or "").strip()
+    if about_text:
+        blocks.append({"id": uuid.uuid4().hex, "type": "text", "title": "קצת עליי", "body": about_text})
+    gallery_images = [u for u in (site.get("gallery") or []) if isinstance(u, str) and u.strip()]
+    if gallery_images:
+        blocks.append({"id": uuid.uuid4().hex, "type": "gallery", "title": "גלריה", "images": gallery_images})
+    site["blocks"] = blocks
+    return True
+
 
 def _bootstrap_persistent_storage():
     """On first boot against a fresh volume, DATA_DIR is empty — seed it from the
@@ -136,7 +281,11 @@ else:
 
 def load_sites():
     with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        sites = json.load(f)
+    migrated = any([_migrate_site_to_blocks(site) for site in sites.values()])
+    if migrated:
+        save_sites(sites)
+    return sites
 
 
 def save_sites(sites):
@@ -525,9 +674,8 @@ def signup_complete():
         "name": decoded.get("name") or email.split("@")[0],
         "role": "",
         "tagline": "",
-        "about": "",
         "photo": decoded.get("picture"),
-        "gallery": [],
+        "blocks": [],
         "contact": {"email": email, "phone": phone, "whatsapp": phone.lstrip("+")},
         "theme": "midnight",
         "photo_layout": "split",
@@ -581,7 +729,6 @@ def admin_save():
     site["name"] = (payload.get("name") or site["name"]).strip()
     site["role"] = (payload.get("role") or site["role"]).strip()
     site["tagline"] = (payload.get("tagline") or site["tagline"]).strip()
-    site["about"] = (payload.get("about") or site["about"]).strip()
 
     theme = payload.get("theme")
     if theme in GRADIENTS:
@@ -596,6 +743,10 @@ def admin_save():
     site["contact"]["phone"] = (contact.get("phone") or site["contact"]["phone"]).strip()
     site["contact"]["whatsapp"] = (contact.get("whatsapp") or site["contact"]["whatsapp"]).strip()
 
+    blocks_payload = payload.get("blocks")
+    if isinstance(blocks_payload, list):
+        site["blocks"] = [b for b in (sanitize_block(raw) for raw in blocks_payload) if b]
+
     sites[slug] = site
     save_sites(sites)
     return jsonify({"ok": True, "site": site})
@@ -606,7 +757,7 @@ def admin_upload():
     slug, sites = current_site_or_401()
 
     field = request.form.get("field")
-    if field not in ("photo", "gallery"):
+    if field not in ("photo", "block_image"):
         return jsonify({"ok": False, "error": "invalid field"}), 400
 
     file = request.files.get("file")
@@ -622,14 +773,17 @@ def admin_upload():
 
     url = f"{STATIC_BASE_URL}/lpapp/uploads/{slug}/{filename}"
 
-    site = sites[slug]
     if field == "photo":
+        site = sites[slug]
         site["photo"] = url
-    else:
-        site["gallery"].append(url)
-    save_sites(sites)
+        save_sites(sites)
+        return jsonify({"ok": True, "url": url, "site": site})
 
-    return jsonify({"ok": True, "url": url, "site": site})
+    # block_image: the file is saved and its URL handed back right away (so the
+    # editor can show it immediately), but it only becomes part of the site's
+    # actual content when the client hits the main "save changes" button — same
+    # single-save-bar model as every text field on this page.
+    return jsonify({"ok": True, "url": url})
 
 
 @app.route("/lpapp/admin/api/remove-image", methods=["POST"])
@@ -639,13 +793,9 @@ def admin_remove_image():
     url = payload.get("url")
 
     site = sites[slug]
-    if site.get("photo") == url:
-        site["photo"] = None
-    elif url in site.get("gallery", []):
-        site["gallery"].remove(url)
-    else:
+    if site.get("photo") != url:
         return jsonify({"ok": False, "error": "not found"}), 404
-
+    site["photo"] = None
     save_sites(sites)
 
     marker = "/lpapp/uploads/"
@@ -721,7 +871,21 @@ def signup_verify_code():
 def landing(slug):
     site = get_site_or_404(slug)
     gradient = GRADIENTS[site["theme"]]
-    return render_template("landing.html", site=site, gradient=gradient)
+
+    visible_blocks = []
+    for block in site.get("blocks", []):
+        if not block_is_visible(block):
+            continue
+        rendered = dict(block)
+        if block["type"] == "video":
+            rendered["embed_src"] = video_embed_src(block.get("url"))
+        elif block["type"] == "map":
+            rendered["embed_src"] = map_embed_src(block.get("address"))
+        elif block["type"] == "faq":
+            rendered["items"] = [it for it in block.get("items", []) if (it.get("q") or "").strip() and (it.get("a") or "").strip()]
+        visible_blocks.append(rendered)
+
+    return render_template("landing.html", site=site, gradient=gradient, blocks=visible_blocks)
 
 
 if __name__ == "__main__":
