@@ -70,6 +70,12 @@ GRADIENTS = {
     "flamingo": {"label": "פלמינגו", "colors": ["#fa709a", "#fee140"]},
     "dreamy": {"label": "סגול חלומי", "colors": ["#a18cd1", "#fbc2eb"]},
     "midnight": {"label": "לילה", "colors": ["#667eea", "#764ba2"]},
+    "fire": {"label": "אש", "colors": ["#f83600", "#f9d423"]},
+    "forest": {"label": "יער", "colors": ["#134e5e", "#71b280"]},
+    "wine": {"label": "יין", "colors": ["#c31432", "#240b36"]},
+    "steel": {"label": "פלדה", "colors": ["#757f9a", "#d7dde8"]},
+    "mint": {"label": "מנטה", "colors": ["#11998e", "#38ef7d"]},
+    "cosmic": {"label": "קוסמי", "colors": ["#0f2027", "#2c5364"]},
 }
 
 PHOTO_LAYOUTS = {"center", "split", "cover"}

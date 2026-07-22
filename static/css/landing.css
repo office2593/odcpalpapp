@@ -469,6 +469,53 @@ section h2 {
   transform: translateY(0);
 }
 
+/* Site footer credit */
+.site-footer {
+  text-align: center;
+  padding: 20px 0 34px;
+}
+
+.site-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  text-decoration: none;
+  color: var(--on-gradient-muted);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 5px 18px 5px 5px;
+}
+
+.site-footer a:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.site-footer a span:last-child {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.site-footer .logo-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.site-footer .logo-circle img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
 @media (prefers-reduced-motion: reduce) {
   body { animation: none; }
   .hero-photo { animation: none; }
